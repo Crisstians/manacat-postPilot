@@ -10,7 +10,7 @@ import {
   revokeBlobUrl,
 } from "../shared/productImage";
 import { resolveProductImageSource } from "./productImageSource";
-import type { LayerRect, ProductInput, TemplateLayout } from "../shared/types";
+import type { LayerRect, ProductInput, TemplateLayout, UpdateStatus } from "../shared/types";
 import { removeProductBackground } from "./services/removeProductBackground";
 import { savePngInBrowser } from "./services/browserExport";
 import { CanvasPreview } from "./components/CanvasPreview";
@@ -36,6 +36,25 @@ const validate = (product: ProductInput, template: TemplateLayout): string[] => 
   return errors;
 };
 
+const getUpdateBannerMessage = (status: UpdateStatus): string | null => {
+  switch (status.phase) {
+    case "checking":
+      return "Se verifică actualizări...";
+    case "available":
+      return `Actualizare disponibilă (v${status.version}). Se descarcă...`;
+    case "downloading":
+      return `Se descarcă actualizarea... ${status.percent}%`;
+    case "downloaded":
+      return `Actualizare descărcată (v${status.version}). Repornește aplicația pentru instalare.`;
+    case "not-available":
+    case "error":
+      return null;
+  }
+};
+
+const isUpdateBannerLoading = (status: UpdateStatus): boolean =>
+  status.phase === "checking" || status.phase === "downloading" || status.phase === "available";
+
 export default function App() {
   const [product, setProduct] = useState<ProductInput>(defaultProduct);
   const [template, setTemplate] = useState<TemplateLayout>(defaultTemplate);
@@ -46,6 +65,7 @@ export default function App() {
   const [backgroundRemovalBusy, setBackgroundRemovalBusy] = useState(false);
   const [backgroundRemovalProgress, setBackgroundRemovalProgress] = useState(0);
   const [backgroundRemovalLabel, setBackgroundRemovalLabel] = useState("");
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const previewRef = useRef<PostCanvasHandle>(null);
 
   const validationErrors = useMemo(() => validate(product, template), [product, template]);
@@ -57,6 +77,16 @@ export default function App() {
       backgroundImagePath: firstBundledTemplatePath,
     }));
   }, [template.backgroundImagePath]);
+
+  useEffect(() => {
+    const unsubscribe = window.manacatApi?.onUpdateStatus?.((status) => {
+      setUpdateStatus(status);
+    });
+    return () => unsubscribe?.();
+  }, []);
+
+  const updateBannerMessage = updateStatus ? getUpdateBannerMessage(updateStatus) : null;
+  const updateBannerLoading = updateStatus ? isUpdateBannerLoading(updateStatus) : false;
 
   const resetProductImageState = (previous: ProductInput, productImagePath: string): ProductInput => {
     revokeBlobUrl(previous.productImagePath);
@@ -210,6 +240,13 @@ export default function App() {
             <h1 className="text-2xl font-bold text-white">PostPilot</h1>
           </div>
         </header>
+
+        {updateBannerMessage ? (
+          <div className="flex items-center justify-center gap-2 border-b border-orange-200 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-800">
+            {updateBannerLoading ? <Spinner size="sm" color="warning" /> : null}
+            <span>{updateBannerMessage}</span>
+          </div>
+        ) : null}
 
         <div className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 gap-4 p-4 xl:grid-cols-12 xl:p-5">
           <section className="min-h-0 xl:col-span-4">

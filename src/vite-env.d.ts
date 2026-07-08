@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { ExportRequest, ExportResult, TemplateAsset } from "./shared/types";
+import type { ExportRequest, ExportResult, TemplateAsset, UpdateStatus } from "./shared/types";
 
 declare global {
   interface Window {
@@ -9,6 +9,7 @@ declare global {
       pickProductImage: () => Promise<string | null>;
       toFileUrl: (filePath: string) => string;
       exportPost: (request: ExportRequest) => Promise<ExportResult>;
+      onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
     };
     showSaveFilePicker?: (options?: {
       suggestedName?: string;

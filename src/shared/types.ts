@@ -83,3 +83,11 @@ export interface TemplateAsset {
   name: string;
   path: string;
 }
+
+export type UpdateStatus =
+  | { phase: "checking" }
+  | { phase: "available"; version: string }
+  | { phase: "not-available" }
+  | { phase: "downloading"; percent: number }
+  | { phase: "downloaded"; version: string }
+  | { phase: "error"; message: string };
