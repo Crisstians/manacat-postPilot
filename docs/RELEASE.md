@@ -1,17 +1,23 @@
 # Release și semnare PostPilot
 
-## Release standard (fără semnare)
+## Release standard
 
 ```bash
-# 1. Actualizează versiunea în package.json (ex: 1.0.1)
+# 1. Actualizează versiunea în package.json (ex: 1.0.5)
 git add .
-git commit -m "Release v1.0.1"
+git commit -m "Release v1.0.5"
 git push
 
-# 2. Creează tag
-git tag v1.0.1
-git push origin v1.0.1
+# 2. Creează tag (versiunea din package.json trebuie să coincidă)
+git tag v1.0.5
+git push origin v1.0.5
 ```
+
+Dacă release-ul nu apare, verifică **GitHub → Actions → Release** (job roșu = build eșuat).
+
+În **Settings → Actions → General → Workflow permissions**, setează **Read and write permissions**.
+
+Pentru re-run manual: **Actions → Release → Run workflow**.
 
 GitHub Actions construiește automat:
 - macOS: `.dmg`
