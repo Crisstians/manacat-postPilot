@@ -2,7 +2,7 @@
   "name": "manacat-post",
   "productName": "Manacat PostPilot",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.2",
   "type": "module",
   "repository": {
     "type": "git",
@@ -13,8 +13,9 @@
     "dev:renderer": "vite --port 5180 --strictPort",
     "dev:electron": "tsc -p tsconfig.electron.json && wait-on tcp:5180 && cross-env VITE_DEV_SERVER_URL=http://localhost:5180 electron .",
     "build": "tsc -b && vite build && tsc -p tsconfig.electron.json",
-    "build:app": "npm run build && electron-builder",
-    "build:release": "npm run build && electron-builder --publish always",
+    "prepare:icons": "node scripts/prepare-icons.mjs",
+    "build:app": "npm run prepare:icons && npm run build && electron-builder",
+    "build:release": "npm run prepare:icons && npm run build && electron-builder --publish always",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run"
@@ -61,7 +62,7 @@
       }
     ],
     "mac": {
-      "icon": "src/assets/logo.png",
+      "icon": "build/icon.png",
       "target": ["dmg"],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -73,11 +74,10 @@
       }
     },
     "dmg": {
-      "title": "PostPilot ${version}",
-      "icon": "src/assets/logo.png"
+      "title": "PostPilot ${version}"
     },
     "win": {
-      "icon": "src/assets/logo.png",
+      "icon": "build/icon.png",
       "target": ["nsis"]
     },
     "nsis": {
@@ -89,9 +89,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "PostPilot",
       "menuCategory": "Manacat",
-      "uninstallDisplayName": "Manacat PostPilot",
-      "installerIcon": "src/assets/logo.png",
-      "uninstallerIcon": "src/assets/logo.png"
+      "uninstallDisplayName": "Manacat PostPilot"
     },
     "directories": {
       "output": "release"
