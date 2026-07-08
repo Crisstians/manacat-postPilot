@@ -2,7 +2,7 @@
   "name": "manacat-post",
   "productName": "Manacat PostPilot",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "repository": {
     "type": "git",
@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
     "dev:renderer": "vite --port 5180 --strictPort",
-    "dev:electron": "tsc -p tsconfig.electron.json && wait-on tcp:5180 && cross-env VITE_DEV_SERVER_URL=http://localhost:5180 electron .",
-    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json",
+    "dev:electron": "tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json && wait-on tcp:5180 && cross-env VITE_DEV_SERVER_URL=http://localhost:5180 electron .",
+    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json && tsc -p tsconfig.preload.json",
     "prepare:icons": "node scripts/prepare-icons.mjs",
     "build:app": "npm run prepare:icons && npm run build && electron-builder",
     "build:release": "npm run prepare:icons && npm run build && electron-builder --publish always",

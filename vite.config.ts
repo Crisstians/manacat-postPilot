@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Required for Electron production builds loaded via file://
+  base: './',
   plugins: [react(), tailwindcss()],
   optimizeDeps: {
     exclude: ['@imgly/background-removal'],
