@@ -1,0 +1,79 @@
+{
+  "name": "manacat-post",
+  "productName": "Manacat Post",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --port 5180 --strictPort",
+    "dev:electron": "tsc -p tsconfig.electron.json && wait-on tcp:5180 && cross-env VITE_DEV_SERVER_URL=http://localhost:5180 electron .",
+    "build": "tsc -b && vite build && tsc -p tsconfig.electron.json",
+    "build:app": "npm run build && electron-builder",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
+    "flowbite": "^4.0.2",
+    "flowbite-react": "^0.12.17",
+    "konva": "^10.3.0",
+    "lucide-react": "^1.23.0",
+    "onnxruntime-web": "^1.21.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-konva": "^19.2.5",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "oxlint": "^1.71.0",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10",
+    "wait-on": "^9.0.10"
+  },
+  "main": "dist-electron/electron/main.js",
+  "build": {
+    "appId": "com.manacat.post",
+    "productName": "Manacat PostPilot",
+    "mac": {
+      "extendInfo": {
+        "CFBundleDisplayName": "Manacat PostPilot",
+        "CFBundleName": "Manacat PostPilot"
+      }
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/assets/templatesPostari",
+        "to": "templatesPostari"
+      },
+      {
+        "from": "src/assets/fonts",
+        "to": "fonts"
+      },
+      {
+        "from": "src/assets/unitati",
+        "to": "unitati"
+      }
+    ]
+  }
+}

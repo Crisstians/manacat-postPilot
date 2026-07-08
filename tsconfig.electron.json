@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-electron",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "resolveJsonModule": true
+  },
+  "include": ["electron/**/*.ts", "src/shared/types.ts", "src/shared/unitDisplay.ts", "src/services/captionGenerator.ts", "src/services/imageComposer.ts", "src/services/layout.ts"]
+}

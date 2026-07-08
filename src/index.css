@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Garet";
+  src: url("./assets/fonts/Garet-Book.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Garet";
+  src: url("./assets/fonts/Garet-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  body {
+    @apply m-0 bg-slate-100 text-slate-900 antialiased;
+  }
+}
