@@ -61,14 +61,37 @@
       }
     ],
     "mac": {
+      "icon": "src/assets/logo.png",
       "target": ["dmg"],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "CFBundleDisplayName": "Manacat PostPilot",
         "CFBundleName": "Manacat PostPilot"
       }
     },
+    "dmg": {
+      "title": "PostPilot ${version}",
+      "icon": "src/assets/logo.png"
+    },
     "win": {
+      "icon": "src/assets/logo.png",
       "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PostPilot",
+      "menuCategory": "Manacat",
+      "uninstallDisplayName": "Manacat PostPilot",
+      "installerIcon": "src/assets/logo.png",
+      "uninstallerIcon": "src/assets/logo.png"
     },
     "directories": {
       "output": "release"
