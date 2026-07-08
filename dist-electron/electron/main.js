@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import { generateCaption } from "../src/services/captionGenerator.js";
 import { exportPostAssets } from "../src/services/imageComposer.js";
+import { setupAutoUpdater } from "./autoUpdater.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const APP_NAME = "Manacat PostPilot";
@@ -113,6 +114,7 @@ ipcMain.handle("post:export", async (_, payload) => {
 });
 app.whenReady().then(async () => {
     enableCrossOriginIsolation();
+    setupAutoUpdater();
     await createWindow();
     app.on("activate", async () => {
         if (BrowserWindow.getAllWindows().length === 0) {
