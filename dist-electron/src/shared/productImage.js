@@ -6,11 +6,35 @@ export const revokeBlobUrl = (url) => {
     }
 };
 export const needsBase64Export = (source) => source.startsWith("blob:") || source.startsWith("data:");
-export const resolveProductImageSource = (imagePath, toFileUrl) => {
-    if (/^(blob:|data:|https?:|file:|\/)/.test(imagePath)) {
+const isWebImagePath = (imagePath) => /^(blob:|data:|https?:|manacat:)/.test(imagePath) ||
+    imagePath.startsWith("./") ||
+    imagePath.startsWith("/assets/") ||
+    imagePath.startsWith("/src/") ||
+    imagePath.startsWith("/@");
+export const fileUrlToPath = (imagePath) => {
+    if (!imagePath.startsWith("file://")) {
         return imagePath;
     }
-    return toFileUrl ? toFileUrl(imagePath) : imagePath;
+    let pathname = decodeURIComponent(imagePath.replace(/^file:\/\//, ""));
+    if (/^\/[A-Za-z]:/.test(pathname)) {
+        pathname = pathname.slice(1);
+    }
+    return pathname;
+};
+export const resolveProductImageSource = (imagePath, toFileUrl) => {
+    if (isWebImagePath(imagePath)) {
+        return imagePath;
+    }
+    const localPath = fileUrlToPath(imagePath);
+    if (toFileUrl) {
+        try {
+            return toFileUrl(localPath);
+        }
+        catch {
+            return localPath;
+        }
+    }
+    return localPath;
 };
 export const imageSourceToBase64 = async (source) => {
     const response = await fetch(source);

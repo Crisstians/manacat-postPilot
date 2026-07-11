@@ -71,12 +71,27 @@ export interface ExportResult {
   error?: string;
 }
 
+export interface RenderPostResult {
+  success: boolean;
+  pngBase64?: string;
+  error?: string;
+}
+
 export interface ExportJob extends ExportRequest {
   caption: string;
   outputImagePath: string;
   outputCaptionPath: string;
   textOverlayPngBase64: string;
+  templatesDir?: string;
 }
+
+export interface PostDraft {
+  id: string;
+  product: ProductInput;
+  template: TemplateLayout;
+}
+
+export const MAX_BULK_POSTS = 10;
 
 export interface TemplateAsset {
   id: string;

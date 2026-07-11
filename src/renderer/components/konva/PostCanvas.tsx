@@ -7,6 +7,7 @@ import {
 } from "../../../services/layout";
 import { getDisplayProductImagePath } from "../../../shared/productImage";
 import { resolveProductImageSource } from "../../productImageSource";
+import { resolveTemplateImageSource } from "../../templateImageSource";
 import type { LayerRect, ProductInput, TemplateLayout } from "../../../shared/types";
 import { splitProductNameLines } from "../../../shared/productFieldLimits";
 import { isSquareMeterUnit, unitPriceSuffixText } from "../../../shared/unitDisplay";
@@ -30,6 +31,8 @@ interface PostCanvasProps {
 }
 
 const resolveImageSrc = (path: string): string => resolveProductImageSource(path);
+
+const resolveBackgroundSrc = (path: string): string => resolveTemplateImageSource(path);
 
 const getSubtitleText = (category: ProductInput["category"]): string =>
   category === "gresie" ? "Placă ceramică\nPremium" : category;
@@ -64,7 +67,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   const stageRef = useRef<Konva.Stage>(null);
   const [isProductSelected, setIsProductSelected] = useState(false);
   const backgroundSrc = template.backgroundImagePath
-    ? resolveImageSrc(template.backgroundImagePath)
+    ? resolveBackgroundSrc(template.backgroundImagePath)
     : undefined;
   const productSrc = product.productImagePath
     ? resolveImageSrc(getDisplayProductImagePath(product))
@@ -117,7 +120,10 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
       if (!layer) {
         return null;
       }
-      return layer.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+      return layer.toDataURL({
+        pixelRatio: previewScale > 0 ? 1 / previewScale : 1,
+        mimeType: "image/png",
+      });
     },
     async exportFullImage() {
       await document.fonts.ready;

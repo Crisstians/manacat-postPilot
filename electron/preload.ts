@@ -1,14 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { pathToFileURL } from "node:url";
-import type { ExportRequest, ExportResult, TemplateAsset, UpdateStatus } from "../src/shared/types.js";
+import type { ExportRequest, ExportResult, RenderPostResult, TemplateAsset, UpdateStatus } from "../src/shared/types.js";
+
+const toFileUrl = (filePath: string): string =>
+  `manacat://open/${encodeURIComponent(filePath)}`;
 
 const api = {
   listTemplates: async (): Promise<TemplateAsset[]> => ipcRenderer.invoke("templates:list"),
   pickProductImage: async (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:pickProductImage"),
-  toFileUrl: (filePath: string): string => pathToFileURL(filePath).toString(),
+  toFileUrl,
   exportPost: async (request: ExportRequest): Promise<ExportResult> =>
     ipcRenderer.invoke("post:export", request),
+  renderPostPng: async (request: ExportRequest): Promise<RenderPostResult> =>
+    ipcRenderer.invoke("post:renderPng", request),
   onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
     ipcRenderer.on("update:status", handler);

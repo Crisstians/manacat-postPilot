@@ -15,6 +15,8 @@ git push origin v1.0.5
 
 Dacă release-ul nu apare, verifică **GitHub → Actions → Release** (job roșu = build eșuat).
 
+Dacă vezi eroare `secondary rate limit`, așteaptă **10-15 minute** înainte de re-run (prea multe request-uri API într-un interval scurt).
+
 În **Settings → Actions → General → Workflow permissions**, setează **Read and write permissions**.
 
 Pentru re-run manual: **Actions → Release → Run workflow**.

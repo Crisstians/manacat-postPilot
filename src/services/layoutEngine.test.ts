@@ -66,7 +66,7 @@ describe("layoutEngine", () => {
 
   it("centers m2 icon vertically against lei visual center", () => {
     const unitBlock = { ...defaultTemplate.textBlocks.unit };
-    const iconHeight = 52;
+    const iconHeight = 163;
     const iconY = layoutM2IconY(unitBlock.y, unitBlock.fontSize, iconHeight);
     const visualCenter = unitBlock.y + unitBlock.fontSize * M2_UNIT_VISUAL_CENTER_RATIO;
 

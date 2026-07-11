@@ -1,6 +1,7 @@
 import { Spinner } from "flowbite-react";
 import { useEffect, useState } from "react";
 import type { TemplateAsset } from "../../shared/types";
+import { getTemplateIdFromPath, resolveTemplateImageSource } from "../templateImageSource";
 
 const bundledTemplateModules = import.meta.glob(
   "../../assets/templatesPostari/*.{png,jpg,jpeg,webp}",
@@ -23,6 +24,8 @@ const getBundledTemplates = (): TemplateAsset[] =>
       path: url,
     }));
 
+const resolveTemplatePreviewSrc = (path: string): string => resolveTemplateImageSource(path);
+
 interface TemplatePickerProps {
   selectedPath: string;
   onSelect: (path: string) => void;
@@ -44,7 +47,7 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
           const items = await window.manacatApi.listTemplates();
           if (!active) return;
           setTemplates(items);
-          if (items.length > 0) {
+          if (items.length > 0 && !selectedPath) {
             onSelect(items[0].path);
           }
           return;
@@ -53,7 +56,7 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
         const fallbackItems = getBundledTemplates();
         if (!active) return;
         setTemplates(fallbackItems);
-        if (fallbackItems.length > 0) {
+        if (fallbackItems.length > 0 && !selectedPath) {
           onSelect(fallbackItems[0].path);
         }
       } catch (caughtError) {
@@ -97,7 +100,7 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {templates.map((template) => {
-        const isSelected = template.path === selectedPath;
+        const isSelected = getTemplateIdFromPath(template.path) === getTemplateIdFromPath(selectedPath);
         return (
           <button
             key={template.id}
@@ -111,8 +114,10 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
           >
             <div className="aspect-square w-full bg-slate-100">
               <img
-                src={window.manacatApi?.toFileUrl ? window.manacatApi.toFileUrl(template.path) : template.path}
+                src={resolveTemplatePreviewSrc(template.path)}
                 alt={template.name}
+                loading="lazy"
+                decoding="async"
                 className="h-full w-full object-cover"
               />
             </div>

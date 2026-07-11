@@ -22,3 +22,31 @@ export const generateCaption = (product: ProductInput): string => {
     "#Manacat #AmenajariInterioare " + categoryTag,
   ].join("\n");
 };
+
+export const generateBulkCaption = (products: ProductInput[]): string => {
+  if (products.length === 0) {
+    return "";
+  }
+  if (products.length === 1) {
+    return generateCaption(products[0]!);
+  }
+
+  const lines = products.map((product, index) => {
+    const priceText = `${product.price.toFixed(2)} lei/${product.unit}`;
+    return `${index + 1}. ${product.productName} - ${product.category.toUpperCase()} (${priceText})`;
+  });
+
+  const categories = [...new Set(products.map((product) => product.category))];
+  const tags = categories
+    .map((category) => categoryTags[category] ?? "#MaterialeConstructii")
+    .join(" ");
+
+  return [
+    `Oferta Manacat - ${products.length} produse`,
+    "",
+    ...lines,
+    "",
+    "Scrie-ne pentru oferta si stoc actualizat!",
+    `#Manacat #AmenajariInterioare ${tags}`,
+  ].join("\n");
+};

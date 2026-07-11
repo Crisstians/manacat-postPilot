@@ -15,15 +15,44 @@ export const revokeBlobUrl = (url?: string): void => {
 export const needsBase64Export = (source: string): boolean =>
   source.startsWith("blob:") || source.startsWith("data:");
 
+const isWebImagePath = (imagePath: string): boolean =>
+  /^(blob:|data:|https?:|manacat:)/.test(imagePath) ||
+  imagePath.startsWith("./") ||
+  imagePath.startsWith("/assets/") ||
+  imagePath.startsWith("/src/") ||
+  imagePath.startsWith("/@");
+
+export const fileUrlToPath = (imagePath: string): string => {
+  if (!imagePath.startsWith("file://")) {
+    return imagePath;
+  }
+
+  let pathname = decodeURIComponent(imagePath.replace(/^file:\/\//, ""));
+  if (/^\/[A-Za-z]:/.test(pathname)) {
+    pathname = pathname.slice(1);
+  }
+  return pathname;
+};
+
 export const resolveProductImageSource = (
   imagePath: string,
   toFileUrl?: (filePath: string) => string,
 ): string => {
-  if (/^(blob:|data:|https?:|file:|\/)/.test(imagePath)) {
+  if (isWebImagePath(imagePath)) {
     return imagePath;
   }
 
-  return toFileUrl ? toFileUrl(imagePath) : imagePath;
+  const localPath = fileUrlToPath(imagePath);
+
+  if (toFileUrl) {
+    try {
+      return toFileUrl(localPath);
+    } catch {
+      return localPath;
+    }
+  }
+
+  return localPath;
 };
 
 export const imageSourceToBase64 = async (source: string): Promise<string> => {

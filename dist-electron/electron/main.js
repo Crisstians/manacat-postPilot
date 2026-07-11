@@ -1,15 +1,55 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
 import { generateCaption } from "../src/services/captionGenerator.js";
-import { exportPostAssets } from "../src/services/imageComposer.js";
+import { exportPostAssets, composePostPngBuffer } from "../src/services/imageComposer.js";
 import { setupAutoUpdater } from "./autoUpdater.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const APP_NAME = "Manacat PostPilot";
 let mainWindow = null;
 app.setName(APP_NAME);
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: "manacat",
+        privileges: {
+            standard: true,
+            secure: true,
+            supportFetchAPI: true,
+            corsEnabled: true,
+            stream: true,
+        },
+    },
+]);
+const LOCAL_IMAGE_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+};
+const registerLocalFileProtocol = () => {
+    protocol.handle("manacat", async (request) => {
+        const prefix = "manacat://open/";
+        if (!request.url.startsWith(prefix)) {
+            return new Response("Not found", { status: 404 });
+        }
+        try {
+            const filePath = decodeURIComponent(request.url.slice(prefix.length));
+            const data = await fs.readFile(filePath);
+            const mimeType = LOCAL_IMAGE_MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+            return new Response(data, {
+                headers: {
+                    "Content-Type": mimeType,
+                    "Cross-Origin-Resource-Policy": "cross-origin",
+                },
+            });
+        }
+        catch {
+            return new Response("Not found", { status: 404 });
+        }
+    });
+};
 const enableCrossOriginIsolation = () => {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
         callback({
@@ -106,13 +146,37 @@ ipcMain.handle("post:export", async (_, payload) => {
         outputImagePath: savePath.filePath,
         outputCaptionPath: savePath.filePath.replace(/\.png$/i, ".txt"),
         caption,
+        templatesDir: getTemplatesDir(),
     });
     if (result.success) {
         shell.showItemInFolder(savePath.filePath);
     }
     return result;
 });
+ipcMain.handle("post:renderPng", async (_, payload) => {
+    try {
+        if (!payload.textOverlayPngBase64) {
+            return { success: false, error: "Overlay-ul text lipseste." };
+        }
+        const pngBuffer = await composePostPngBuffer({
+            ...payload,
+            textOverlayPngBase64: payload.textOverlayPngBase64,
+            templatesDir: getTemplatesDir(),
+        });
+        return {
+            success: true,
+            pngBase64: pngBuffer.toString("base64"),
+        };
+    }
+    catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "Nu s-a putut genera imaginea.",
+        };
+    }
+});
 app.whenReady().then(async () => {
+    registerLocalFileProtocol();
     enableCrossOriginIsolation();
     setupAutoUpdater();
     await createWindow();

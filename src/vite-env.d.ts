@@ -1,6 +1,14 @@
 /// <reference types="vite/client" />
 
-import type { ExportRequest, ExportResult, TemplateAsset, UpdateStatus } from "./shared/types";
+interface ImportMetaEnv {
+  readonly VITE_API_URL?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+import type { ExportRequest, ExportResult, RenderPostResult, TemplateAsset, UpdateStatus } from "./shared/types";
 
 declare global {
   interface Window {
@@ -9,6 +17,7 @@ declare global {
       pickProductImage: () => Promise<string | null>;
       toFileUrl: (filePath: string) => string;
       exportPost: (request: ExportRequest) => Promise<ExportResult>;
+      renderPostPng: (request: ExportRequest) => Promise<RenderPostResult>;
       onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
     };
     showSaveFilePicker?: (options?: {

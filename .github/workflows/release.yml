@@ -6,6 +6,10 @@ on:
       - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: postpilot-release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -63,12 +67,29 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Cooldown before GitHub API publish
+        run: sleep 90
+
+      - name: Create GitHub Release (retry on rate limit)
+        uses: nick-fields/retry@v3
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: artifacts/**
+          timeout_minutes: 15
+          max_attempts: 6
+          retry_wait_seconds: 120
+          command: |
+            shopt -s nullglob globstar
+            mapfile -t files < <(find artifacts -type f)
+            if [ "${#files[@]}" -eq 0 ]; then
+              echo "No release artifacts found."
+              exit 1
+            fi
+            if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              gh release upload "${{ github.ref_name }}" "${files[@]}" --repo "${{ github.repository }}" --clobber
+            else
+              gh release create "${{ github.ref_name }}" "${files[@]}" \
+                --title "${{ github.ref_name }}" \
+                --generate-notes \
+                --repo "${{ github.repository }}"
+            fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

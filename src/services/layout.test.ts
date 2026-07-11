@@ -41,13 +41,13 @@ describe("computeCoverRectBottomRight", () => {
     const result = computeCoverRectBottomRight({
       sourceWidth: 1200,
       sourceHeight: 600,
-      target: { x: 0, y: 0, width: 940, height: 788 },
+      target: { x: 0, y: 0, width: 2938, height: 2463 },
     });
 
     // For wider images: height matches target, width becomes larger and is cropped from the left.
-    expect(result.height).toBe(788);
-    expect(result.width).toBeCloseTo(1576, 1);
-    expect(result.x).toBeCloseTo(-636, 0);
+    expect(result.height).toBe(2463);
+    expect(result.width).toBeCloseTo(4926, 0);
+    expect(result.x).toBeCloseTo(-1988, 0);
     expect(result.y).toBe(0);
   });
 });

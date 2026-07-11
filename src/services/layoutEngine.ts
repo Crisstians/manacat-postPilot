@@ -4,21 +4,21 @@ import { DIMENSION_ICON_NATIVE_SIZE, MATERIAL_ICON_NATIVE_SIZE } from "../shared
 
 export const GARET_FONT_FAMILY = "Garet, Inter, Arial, sans-serif";
 
-export const PRICE_UNIT_GAP = 8;
+export const PRICE_UNIT_GAP = 25;
 /** Spațiu orizontal între „lei” și iconița m² (nu afectează Y). */
-export const UNIT_ICON_GAP = 6;
-export const ICON_TEXT_GAP = 8;
-export const SIZE_TEXT_GAP = 5;
+export const UNIT_ICON_GAP = 19;
+export const ICON_TEXT_GAP = 25;
+export const SIZE_TEXT_GAP = 16;
 export const SIZE_SMALL_FONT_RATIO = 0.48;
 export const BOTTOM_ROW_ICON_HEIGHT_RATIO = 0.92;
 /** Spațiu orizontal între rândul de dimensiuni și cel de aspect. */
-export const BOTTOM_ROWS_GAP = 24;
+export const BOTTOM_ROWS_GAP = 75;
 export const SECONDARY_TEXT_BASELINE_RATIO = 0.82;
-export const M2_ICON_NATIVE_SIZE = { width: 33, height: 29 };
+export const M2_ICON_NATIVE_SIZE = { width: 103, height: 91 };
 /** Raport față de fontSize pentru centrul vizual al textului „lei”. */
 export const M2_UNIT_VISUAL_CENTER_RATIO = 0.58;
 /** Ajustare fină verticală după centrare (valori mai mari = icon mai jos). */
-export const M2_ICON_OFFSET_Y = 4;
+export const M2_ICON_OFFSET_Y = 13;
 
 export const unitTextBaselineY = (unitY: number, fontSize: number): number =>
   unitY + fontSize * M2_UNIT_VISUAL_CENTER_RATIO;

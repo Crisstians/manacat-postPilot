@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateCaption } from "./captionGenerator";
+import { generateBulkCaption, generateCaption } from "./captionGenerator";
 
 describe("generateCaption", () => {
   it("includes product details and hashtags", () => {
@@ -19,5 +19,36 @@ describe("generateCaption", () => {
     expect(result).toContain("49.99");
     expect(result).toContain("#Manacat");
     expect(result).toContain("#Gresie");
+  });
+
+  it("combines multiple products into one bulk caption", () => {
+    const result = generateBulkCaption([
+      {
+        productName: "Greco",
+        category: "gresie",
+        price: 60.99,
+        unit: "m²",
+        features: [],
+        description: "",
+        sizeWidth: "",
+        sizeHeight: "",
+        productImagePath: "",
+      },
+      {
+        productName: "Alba",
+        category: "faianta",
+        price: 45.5,
+        unit: "m²",
+        features: [],
+        description: "",
+        sizeWidth: "",
+        sizeHeight: "",
+        productImagePath: "",
+      },
+    ]);
+
+    expect(result).toContain("2 produse");
+    expect(result).toContain("1. Greco");
+    expect(result).toContain("2. Alba");
   });
 });

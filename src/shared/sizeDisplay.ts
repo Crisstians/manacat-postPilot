@@ -1,7 +1,7 @@
 import { PRODUCT_FIELD_LIMITS, clampText } from "./productFieldLimits.js";
 
-export const DIMENSION_ICON_NATIVE_SIZE = { width: 64, height: 64 };
-export const MATERIAL_ICON_NATIVE_SIZE = { width: 92, height: 61 };
+export const DIMENSION_ICON_NATIVE_SIZE = { width: 200, height: 200 };
+export const MATERIAL_ICON_NATIVE_SIZE = { width: 288, height: 191 };
 
 export interface ParsedSizeLabel {
   width: string;
