@@ -16,8 +16,9 @@ export const needsBase64Export = (source: string): boolean =>
   source.startsWith("blob:") || source.startsWith("data:");
 
 const isWebImagePath = (imagePath: string): boolean =>
-  /^(blob:|data:|https?:|manacat:)/.test(imagePath) ||
+  /^(blob:|data:|https?:|manacat:|file:)/.test(imagePath) ||
   imagePath.startsWith("./") ||
+  imagePath.startsWith("assets/") ||
   imagePath.startsWith("/assets/") ||
   imagePath.startsWith("/src/") ||
   imagePath.startsWith("/@");

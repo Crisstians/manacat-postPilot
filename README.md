@@ -4,7 +4,7 @@ Aplicație desktop pentru echipa Manacat — compune postări pentru Facebook di
 
 PostPilot acoperă trei tipuri de conținut: **promovare produs** (graphic cu preț, poză și caracteristici), **anunț magazin** (program, reduceri, evenimente) și **anunț angajări**. Editorul lucrează pe template-uri Manacat; la final, postarea pleacă pe pagina de Facebook prin API-ul intern.
 
-Disponibil pe **Windows** și **macOS**, cu actualizări automate după instalare.
+Disponibil pe **Windows**, cu actualizări automate după instalare.
 
 ## Descărcare
 
@@ -24,17 +24,6 @@ Pornește Vite pe portul 5180 și Electron cu hot reload. Pentru build de produc
 ```bash
 npm run build:app
 ```
-
-## Release
-
-Actualizează versiunea în `package.json`, apoi:
-
-```bash
-git tag v1.0.5
-git push origin v1.0.5
-```
-
-GitHub Actions construiește `.exe` (Windows) și `.dmg` (macOS) și le publică în Releases. Dacă workflow-ul eșuează, verifică **Actions → Release**. La rate limit GitHub, așteaptă ~10 minute și re-rulează.
 
 ## Structură
 

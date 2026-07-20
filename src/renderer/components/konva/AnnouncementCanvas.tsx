@@ -9,7 +9,7 @@ import {
 } from "../../../shared/announcementTypes";
 import { resolveTemplateImageSource } from "../../templateImageSource";
 import { FitText } from "./FitText";
-import { useKonvaImage } from "./useKonvaImage";
+import { useKonvaImageFromSrc } from "./useKonvaImage";
 
 export interface AnnouncementCanvasHandle {
   exportFullImage: () => Promise<string | null>;
@@ -58,7 +58,7 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
     const backgroundSrc = template.backgroundImagePath
       ? resolveTemplateImageSource(template.backgroundImagePath)
       : undefined;
-    const backgroundImage = useKonvaImage(backgroundSrc);
+    const backgroundImage = useKonvaImageFromSrc(backgroundSrc);
     const layout = useMemo(() => getAnnouncementLayout(draft.postType), [draft.postType]);
 
     useImperativeHandle(ref, () => ({

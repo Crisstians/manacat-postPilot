@@ -54,12 +54,18 @@ describe("productImage", () => {
     );
   });
 
-  it("rewrites legacy file urls through toFileUrl in Electron", () => {
+  it("keeps file and bundled asset urls unchanged", () => {
     const toFileUrl = (filePath: string) => `manacat://open/${encodeURIComponent(filePath)}`;
 
     expect(
       resolveProductImageSource("file:///Users/cristian/Downloads/test.png", toFileUrl),
-    ).toBe("manacat://open/%2FUsers%2Fcristian%2FDownloads%2Ftest.png");
+    ).toBe("file:///Users/cristian/Downloads/test.png");
+    expect(resolveProductImageSource("./assets/template1.png", toFileUrl)).toBe(
+      "./assets/template1.png",
+    );
+    expect(resolveProductImageSource("assets/template1.png", toFileUrl)).toBe(
+      "assets/template1.png",
+    );
   });
 
   it("keeps bundled dev-server asset paths unchanged", () => {

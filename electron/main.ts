@@ -113,6 +113,7 @@ const registerLocalFileProtocol = (): void => {
         headers: {
           "Content-Type": mimeType,
           "Cross-Origin-Resource-Policy": "cross-origin",
+          "Access-Control-Allow-Origin": "*",
         },
       });
     } catch {

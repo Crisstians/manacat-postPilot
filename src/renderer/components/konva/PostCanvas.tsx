@@ -16,7 +16,7 @@ import { BottomRows } from "./BottomRows";
 import { FitText } from "./FitText";
 import { PriceRow } from "./PriceRow";
 import { ProductImageLayer } from "./ProductImageLayer";
-import { useKonvaImage } from "./useKonvaImage";
+import { useKonvaImage, useKonvaImageFromSrc } from "./useKonvaImage";
 
 export interface PostCanvasHandle {
   exportTextOverlay: () => Promise<string | null>;
@@ -103,7 +103,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   const productSrc = product.productImagePath
     ? resolveImageSrc(getDisplayProductImagePath(product))
     : undefined;
-  const backgroundImage = useKonvaImage(backgroundSrc);
+  const backgroundImage = useKonvaImageFromSrc(backgroundSrc);
   const productImage = useKonvaImage(productSrc);
   const interactiveProductImage = Boolean(productImage && onProductImageLayoutChange);
 

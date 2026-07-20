@@ -15,16 +15,7 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: mac
-          - os: windows-latest
-            platform: win
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
@@ -46,13 +37,16 @@ jobs:
         run: npm run build
 
       - name: Package installer
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+        run: npx electron-builder --win --publish never
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-${{ matrix.platform }}
-          path: release/
+          name: installer-win
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
 
   publish:
@@ -78,11 +72,14 @@ jobs:
           retry_wait_seconds: 120
           command: |
             shopt -s nullglob globstar
-            mapfile -t files < <(find artifacts -type f)
+            mapfile -t files < <(
+              find artifacts -type f \( -name '*.exe' -o -name '*.exe.blockmap' -o -name 'latest.yml' \)
+            )
             if [ "${#files[@]}" -eq 0 ]; then
               echo "No release artifacts found."
               exit 1
             fi
+            printf 'Publishing %s\n' "${files[@]}"
             if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
               gh release upload "${{ github.ref_name }}" "${files[@]}" --repo "${{ github.repository }}" --clobber
             else
