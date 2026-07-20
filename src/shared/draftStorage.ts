@@ -35,6 +35,12 @@ export const sanitizeProductForLoad = (product: ProductInput): ProductInput => {
   const processedPath = clearEphemeralImageRef(product.productImageProcessedPath);
   return {
     ...product,
+    hasDiscount: Boolean(product.hasDiscount),
+    hasNewProduct: Boolean(product.hasNewProduct),
+    originalPrice:
+      typeof product.originalPrice === "number" && Number.isFinite(product.originalPrice)
+        ? product.originalPrice
+        : 0,
     productImagePath: clearEphemeralImageRef(product.productImagePath),
     productImageProcessedPath: processedPath || undefined,
   };

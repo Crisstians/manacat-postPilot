@@ -355,6 +355,115 @@ export function ProductForm({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
+          <FormField label="Unitate" htmlFor="unit">
+            <input
+              id="unit"
+              readOnly
+              tabIndex={-1}
+              className="input input-sm w-full cursor-default bg-base-200/50 text-base-content/70"
+              value={product.unit}
+              aria-label={`Unitate automată: ${product.unit}`}
+            />
+            <p className="helper-text mt-1 text-[10px]">Setată automat după categorie</p>
+          </FormField>
+
+          <FormField label="Etichete" htmlFor="hasDiscount">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="hasDiscount"
+                className="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-base-300/80 bg-base-100 px-3 text-sm"
+              >
+                <input
+                  id="hasDiscount"
+                  type="checkbox"
+                  className="checkbox checkbox-sm checkbox-primary"
+                  checked={Boolean(product.hasDiscount)}
+                  onChange={(event) => {
+                    const hasDiscount = event.target.checked;
+                    onChange({
+                      ...product,
+                      hasDiscount,
+                      originalPrice: hasDiscount ? product.originalPrice : 0,
+                    });
+                  }}
+                />
+                <span>Preț redus</span>
+              </label>
+              <label
+                htmlFor="hasNewProduct"
+                className="flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-base-300/80 bg-base-100 px-3 text-sm"
+              >
+                <input
+                  id="hasNewProduct"
+                  type="checkbox"
+                  className="checkbox checkbox-sm checkbox-primary"
+                  checked={Boolean(product.hasNewProduct)}
+                  onChange={(event) => update("hasNewProduct", event.target.checked)}
+                />
+                <span>Produs nou</span>
+              </label>
+            </div>
+          </FormField>
+        </div>
+
+        {product.hasDiscount ? (
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Preț înainte" htmlFor="originalPrice">
+              <input
+                id="originalPrice"
+                className={`input input-sm w-full ${missingClass(
+                  product.originalPrice <= 0 ||
+                    (product.price > 0 && product.originalPrice <= product.price),
+                )}`}
+                type="number"
+                min={0}
+                max={PRODUCT_FIELD_LIMITS.priceMax}
+                step="0.01"
+                value={product.originalPrice || ""}
+                placeholder="ex. 69.99"
+                onChange={(event) => {
+                  const nextPrice = Number(event.target.value);
+                  if (!Number.isFinite(nextPrice)) {
+                    update("originalPrice", 0);
+                    return;
+                  }
+                  update(
+                    "originalPrice",
+                    Math.min(Math.max(nextPrice, 0), PRODUCT_FIELD_LIMITS.priceMax),
+                  );
+                }}
+              />
+              {product.originalPrice > 0 &&
+              product.price > 0 &&
+              product.originalPrice <= product.price ? (
+                <p className="helper-text mt-1 text-[10px] text-error">
+                  Trebuie să fie mai mare decât prețul redus
+                </p>
+              ) : null}
+            </FormField>
+
+            <FormField label="Preț după reducere" htmlFor="price">
+              <input
+                id="price"
+                className={`input input-sm w-full ${missingClass(product.price <= 0)}`}
+                type="number"
+                min={0}
+                max={PRODUCT_FIELD_LIMITS.priceMax}
+                step="0.01"
+                value={product.price || ""}
+                placeholder="ex. 49.99"
+                onChange={(event) => {
+                  const nextPrice = Number(event.target.value);
+                  if (!Number.isFinite(nextPrice)) {
+                    update("price", 0);
+                    return;
+                  }
+                  update("price", Math.min(Math.max(nextPrice, 0), PRODUCT_FIELD_LIMITS.priceMax));
+                }}
+              />
+            </FormField>
+          </div>
+        ) : (
           <FormField label="Preț" htmlFor="price">
             <input
               id="price"
@@ -375,19 +484,7 @@ export function ProductForm({
               }}
             />
           </FormField>
-
-          <FormField label="Unitate" htmlFor="unit">
-            <input
-              id="unit"
-              readOnly
-              tabIndex={-1}
-              className="input input-sm w-full cursor-default bg-base-200/50 text-base-content/70"
-              value={product.unit}
-              aria-label={`Unitate automată: ${product.unit}`}
-            />
-            <p className="helper-text mt-1 text-[10px]">Setată automat după categorie</p>
-          </FormField>
-        </div>
+        )}
       </FormSection>
 
       <FormSection

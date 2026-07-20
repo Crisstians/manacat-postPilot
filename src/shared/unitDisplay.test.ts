@@ -10,5 +10,6 @@ describe("unitDisplay", () => {
   it("uses lei/unit text for other units", () => {
     expect(unitPriceSuffixText("L")).toBe("lei/L");
     expect(unitPriceSuffixText("kg")).toBe("lei/kg");
+    expect(unitPriceSuffixText("buc")).toBe("lei/buc");
   });
 });

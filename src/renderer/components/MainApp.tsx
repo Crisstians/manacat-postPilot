@@ -13,6 +13,7 @@ import {
   getTemplatePanelIncomplete,
   isExportReady,
 } from "../../shared/exportReadiness";
+import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
 import { revokeBlobUrl } from "../../shared/productImage";
 import type { LayerRect, PostDraft, ProductInput, TemplateLayout } from "../../shared/types";
 import { MAX_BULK_POSTS } from "../../shared/types";
@@ -32,6 +33,11 @@ import { CanvasPreview } from "./CanvasPreview";
 import { CaptionEditor } from "./CaptionEditor";
 import type { PostCanvasHandle } from "./konva/PostCanvas";
 import { ProductForm } from "./ProductForm";
+import {
+  BULK_PUBLISH_CHECKLIST,
+  PRODUCT_PUBLISH_CHECKLIST,
+  PublishConfirmModal,
+} from "./PublishConfirmModal";
 import { TemplateControls } from "./TemplateControls";
 
 const bundledTemplateModules = import.meta.glob(
@@ -46,6 +52,12 @@ const validate = (product: ProductInput, template: TemplateLayout): string[] => 
   const errors: string[] = [];
   if (!product.productName.trim()) errors.push("Nume produs obligatoriu.");
   if (product.price <= 0) errors.push("Pretul trebuie sa fie pozitiv.");
+  if (product.hasDiscount) {
+    if (product.originalPrice <= 0) errors.push("Pretul inainte de reducere este obligatoriu.");
+    else if (product.originalPrice <= product.price) {
+      errors.push("Pretul inainte de reducere trebuie sa fie mai mare decat pretul redus.");
+    }
+  }
   if (!product.productImagePath) errors.push("Poza produs obligatorie.");
   if (!template.backgroundImagePath) errors.push("Fundal obligatoriu.");
   if (!product.description.trim()) errors.push("Descriere obligatorie.");
@@ -70,8 +82,12 @@ export function MainApp({ onBack }: MainAppProps) {
   const [bulkCaptionTouched, setBulkCaptionTouched] = useState(initialSession.bulkCaptionTouched);
   const [busy, setBusy] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [publishPreviewUrls, setPublishPreviewUrls] = useState<string[]>([]);
+  const [publishPreviewLoading, setPublishPreviewLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<ActionLoadingState | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const publishPreviewBlobsRef = useRef<Blob[] | null>(null);
   const [activePanel, setActivePanel] = useState<"product" | "template">(initialSession.activePanel);
   const [showFieldHints, setShowFieldHints] = useState(false);
   const previewRef = useRef<PostCanvasHandle>(null);
@@ -480,6 +496,67 @@ export function MainApp({ onBack }: MainAppProps) {
     }
   };
 
+  const clearPublishPreview = useCallback(() => {
+    for (const url of publishPreviewUrls) {
+      if (url.startsWith("blob:")) {
+        URL.revokeObjectURL(url);
+      }
+    }
+    setPublishPreviewUrls([]);
+    publishPreviewBlobsRef.current = null;
+  }, [publishPreviewUrls]);
+
+  const closePublishConfirm = useCallback(() => {
+    if (publishBusy) return;
+    setPublishConfirmOpen(false);
+    clearPublishPreview();
+  }, [publishBusy, clearPublishPreview]);
+
+  const onRequestPublishToFacebook = async () => {
+    const errorsToCheck = isBulkMode ? allDraftErrors : validationErrors;
+    if (errorsToCheck.length) {
+      setShowFieldHints(true);
+      showError(errorsToCheck.join(" "));
+      return;
+    }
+    if (!accessToken) {
+      showError("Sesiunea a expirat. Autentifică-te din nou.");
+      return;
+    }
+
+    clearPublishPreview();
+    setPublishConfirmOpen(true);
+    setPublishPreviewLoading(true);
+
+    try {
+      if (isBulkMode) {
+        const images = await renderAllDraftImages(drafts, previewRef.current, setActiveIndex);
+        publishPreviewBlobsRef.current = images;
+        setPublishPreviewUrls(images.map((image) => URL.createObjectURL(image)));
+        return;
+      }
+
+      const dataUrl = await previewRef.current?.exportFullImage();
+      if (dataUrl) {
+        setPublishPreviewUrls([dataUrl]);
+        return;
+      }
+
+      const image = await renderPostImageBlob(previewRef.current, product, template);
+      if (image) {
+        publishPreviewBlobsRef.current = [image];
+        setPublishPreviewUrls([URL.createObjectURL(image)]);
+      }
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "Nu s-a putut genera preview-ul pentru confirmare.",
+      );
+      setPublishConfirmOpen(false);
+    } finally {
+      setPublishPreviewLoading(false);
+    }
+  };
+
   const onPublishToFacebook = async () => {
     const errorsToCheck = isBulkMode ? allDraftErrors : validationErrors;
     if (errorsToCheck.length) {
@@ -502,19 +579,23 @@ export function MainApp({ onBack }: MainAppProps) {
 
     try {
       if (isBulkMode) {
-        const images = await renderAllDraftImages(
-          drafts,
-          previewRef.current,
-          setActiveIndex,
-          (current, total) => {
-            setActionLoading({
-              variant: "publish",
-              stepIndex: 0,
-              progress: 10 + (current / total) * 52,
-              detail: `Postare ${current} din ${total}`,
-            });
-          },
-        );
+        const cached = publishPreviewBlobsRef.current;
+        const images =
+          cached && cached.length === drafts.length
+            ? cached
+            : await renderAllDraftImages(
+                drafts,
+                previewRef.current,
+                setActiveIndex,
+                (current, total) => {
+                  setActionLoading({
+                    variant: "publish",
+                    stepIndex: 0,
+                    progress: 10 + (current / total) * 52,
+                    detail: `Postare ${current} din ${total}`,
+                  });
+                },
+              );
         const caption = bulkCaption.trim() || suggestedBulkCaption;
         if (!caption.trim()) {
           showError("Caption-ul pentru lot este obligatoriu.");
@@ -543,6 +624,9 @@ export function MainApp({ onBack }: MainAppProps) {
         showSuccess(
           `Lot publicat pe Facebook cu ${images.length} imagini (ID: ${result.facebookPostId}).`,
         );
+        setPublishConfirmOpen(false);
+        clearPublishPreview();
+        await openFacebookPostInBrowser(result.facebookPostId);
         return;
       }
 
@@ -579,6 +663,9 @@ export function MainApp({ onBack }: MainAppProps) {
         detail: "Postare publicată cu succes",
       });
       showSuccess(`Postare publicată pe Facebook (ID: ${result.facebookPostId}).`);
+      setPublishConfirmOpen(false);
+      clearPublishPreview();
+      await openFacebookPostInBrowser(result.facebookPostId);
     } catch (publishError) {
       showError(
         publishError instanceof Error
@@ -612,6 +699,25 @@ export function MainApp({ onBack }: MainAppProps) {
   return (
     <main className="h-screen overflow-hidden bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
+      <PublishConfirmModal
+        open={publishConfirmOpen}
+        title={
+          isBulkMode
+            ? `Confirmă publicarea lotului (${drafts.length} postări)`
+            : "Confirmă publicarea pe Facebook"
+        }
+        caption={
+          isBulkMode
+            ? bulkCaption.trim() || suggestedBulkCaption
+            : activeDraft.facebookCaption.trim() || suggestedCaption
+        }
+        checklist={isBulkMode ? BULK_PUBLISH_CHECKLIST : PRODUCT_PUBLISH_CHECKLIST}
+        previewUrls={publishPreviewUrls}
+        previewLoading={publishPreviewLoading}
+        confirmBusy={publishBusy}
+        onCancel={closePublishConfirm}
+        onConfirm={() => void onPublishToFacebook()}
+      />
       <div className="flex h-full flex-col">
         <AppHeader
           onBack={onBack}
@@ -766,7 +872,7 @@ export function MainApp({ onBack }: MainAppProps) {
                     <button
                       type="button"
                       className="btn btn-info btn-sm min-w-52"
-                      onClick={() => void onPublishToFacebook()}
+                      onClick={() => void onRequestPublishToFacebook()}
                       disabled={actionBusy || !canPublishBulk}
                       title={
                         !canPublishBulk && !isBulkMode

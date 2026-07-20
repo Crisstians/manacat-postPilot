@@ -7,6 +7,7 @@ export const UNIT_BY_CATEGORY: Record<ProductCategory, string> = {
   vopsea: "L",
   parchet: "m²",
   adezivi: "kg",
+  "produs-general": "buc",
 };
 
 export const unitForCategory = (category: ProductCategory): string =>

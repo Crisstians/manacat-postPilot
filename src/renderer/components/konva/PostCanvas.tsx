@@ -16,6 +16,7 @@ import { BottomRows } from "./BottomRows";
 import { FitText } from "./FitText";
 import { PriceRow } from "./PriceRow";
 import { ProductImageLayer } from "./ProductImageLayer";
+import { EXPORT_PIXEL_RATIO } from "./textStyles";
 import { useKonvaImage, useKonvaImageFromSrc } from "./useKonvaImage";
 
 export interface PostCanvasHandle {
@@ -60,7 +61,7 @@ const applyExportStageSizing = (
   stage.scale({ x: 1, y: 1 });
   stage.size({ width: template.width, height: template.height });
   stage.getLayers().forEach((layer) => {
-    layer.getCanvas().setPixelRatio(1);
+    layer.getCanvas().setPixelRatio(EXPORT_PIXEL_RATIO);
   });
 };
 
@@ -140,6 +141,10 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   const productNameLines = splitProductNameLines(product.productName || "Nume produs");
   const featureText = product.features[0] ?? "-";
   const priceText = Number.isFinite(product.price) ? product.price.toFixed(2) : "0.00";
+  const originalPriceText =
+    product.hasDiscount && Number.isFinite(product.originalPrice)
+      ? product.originalPrice.toFixed(2)
+      : undefined;
   const unitLabel = unitPriceSuffixText(product.unit || "-");
   const showM2Icon = isSquareMeterUnit(product.unit);
   const shadowEnabled = Boolean(product.productImageProcessedPath);
@@ -168,7 +173,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
       stage.draw();
 
       const dataUrl = layer.toDataURL({
-        pixelRatio: 1,
+        pixelRatio: EXPORT_PIXEL_RATIO,
         mimeType: "image/png",
       });
 
@@ -193,7 +198,10 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
       applyExportStageSizing(stage, template);
       stage.draw();
 
-      const dataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+      const dataUrl = stage.toDataURL({
+        pixelRatio: EXPORT_PIXEL_RATIO,
+        mimeType: "image/png",
+      });
 
       placeholder?.visible(placeholderWasVisible);
       applyPreviewStageSizing(stage, template, previewScale);
@@ -304,6 +312,9 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
         />
         <PriceRow
           priceText={priceText}
+          originalPriceText={originalPriceText}
+          hasDiscount={Boolean(product.hasDiscount)}
+          hasNewProduct={Boolean(product.hasNewProduct)}
           unitLabel={unitLabel}
           showM2Icon={showM2Icon}
           priceBlock={template.textBlocks.price}

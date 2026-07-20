@@ -6,6 +6,7 @@ const defaultSubtitles: Record<ProductCategory, string> = {
   vopsea: "Vopsea\nPremium",
   parchet: "Parchet\nPremium",
   adezivi: "Adeziv\nPremium",
+  "produs-general": "Produs\nGeneral",
 };
 
 export const defaultSubtitleForCategory = (category: ProductCategory): string =>

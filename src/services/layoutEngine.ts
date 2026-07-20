@@ -20,6 +20,29 @@ export const M2_UNIT_VISUAL_CENTER_RATIO = 0.58;
 /** Ajustare fină verticală după centrare (valori mai mari = icon mai jos). */
 export const M2_ICON_OFFSET_Y = 13;
 
+/** Raport font preț vechi față de prețul redus (mare). */
+export const ORIGINAL_PRICE_FONT_RATIO = 0.42;
+export const DISCOUNT_BADGE_NATIVE_SIZE = { width: 250, height: 253 };
+export const DISCOUNT_STRIKE_NATIVE_SIZE = { width: 522, height: 94 };
+export const DISCOUNT_BADGE_TO_PRICE_GAP = 28;
+/** Spațiu vertical între rândul prețului vechi și prețul redus. */
+export const DISCOUNT_ORIGINAL_TO_SALE_GAP = 28;
+/** Înălțime badge relativă la fontul prețului vechi. */
+export const DISCOUNT_BADGE_HEIGHT_RATIO = 2.55;
+/** Spațiu orizontal între badge-urile „Preț redus” și „Produs nou”. */
+export const HANGING_BADGE_GAP = 24;
+
+export const layoutHangingBadgeSize = (
+  priceBlock: TextBlock,
+): { width: number; height: number } => {
+  const referenceFont = Math.round(priceBlock.fontSize * ORIGINAL_PRICE_FONT_RATIO);
+  const height = Math.round(referenceFont * DISCOUNT_BADGE_HEIGHT_RATIO);
+  const width = Math.round(
+    (DISCOUNT_BADGE_NATIVE_SIZE.width / DISCOUNT_BADGE_NATIVE_SIZE.height) * height,
+  );
+  return { width, height };
+};
+
 export const unitTextBaselineY = (unitY: number, fontSize: number): number =>
   unitY + fontSize * M2_UNIT_VISUAL_CENTER_RATIO;
 
@@ -58,6 +81,20 @@ export interface PriceRowLayout {
   price: { x: number; y: number; fontSize: number; text: string; width: number };
   unit: { x: number; y: number; fontSize: number; text: string; width: number };
   icon?: { x: number; y: number; width: number; height: number };
+}
+
+export interface DiscountStrikeLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DiscountPriceBlockLayout {
+  badge: { x: number; y: number; width: number; height: number };
+  original: PriceRowLayout;
+  strike: DiscountStrikeLayout;
+  sale: PriceRowLayout;
 }
 
 export interface SizeRowSegment {
@@ -291,6 +328,107 @@ export const layoutPriceRow = (
   }
 
   return layout;
+};
+
+export const layoutDiscountPriceBlock = (
+  salePriceText: string,
+  originalPriceText: string,
+  unitLabel: string,
+  showM2Icon: boolean,
+  priceBlock: TextBlock,
+  unitBlock: TextBlock,
+  measure: TextMeasurer = createEstimateTextMeasurer(),
+): DiscountPriceBlockLayout => {
+  const originalPriceFont = Math.round(priceBlock.fontSize * ORIGINAL_PRICE_FONT_RATIO);
+  const originalUnitFont = Math.round(unitBlock.fontSize * ORIGINAL_PRICE_FONT_RATIO);
+  const unitYOffset = unitBlock.y - priceBlock.y;
+
+  const badgeHeight = Math.round(originalPriceFont * DISCOUNT_BADGE_HEIGHT_RATIO);
+  const badgeWidth = Math.round(
+    (DISCOUNT_BADGE_NATIVE_SIZE.width / DISCOUNT_BADGE_NATIVE_SIZE.height) * badgeHeight,
+  );
+
+  // Prețul redus (mare) rămâne pe ancora din template; prețul vechi + badge-ul stau deasupra.
+  const salePriceY = priceBlock.y;
+  const saleUnitY = unitBlock.y;
+  const priceStartX = priceBlock.x + badgeWidth + DISCOUNT_BADGE_TO_PRICE_GAP;
+
+  const originalRowHeight = originalPriceFont + Math.max(0, Math.round(unitYOffset * ORIGINAL_PRICE_FONT_RATIO));
+  const originalPriceY = salePriceY - originalRowHeight - DISCOUNT_ORIGINAL_TO_SALE_GAP;
+  const originalUnitY = originalPriceY + Math.round(unitYOffset * ORIGINAL_PRICE_FONT_RATIO);
+
+  const originalPriceBlock: TextBlock = {
+    ...priceBlock,
+    x: priceStartX,
+    y: originalPriceY,
+    fontSize: originalPriceFont,
+    maxWidth: Math.max(120, priceBlock.maxWidth - badgeWidth - DISCOUNT_BADGE_TO_PRICE_GAP),
+  };
+  const originalUnitBlock: TextBlock = {
+    ...unitBlock,
+    y: originalUnitY,
+    fontSize: originalUnitFont,
+  };
+
+  const original = layoutPriceRow(
+    originalPriceText,
+    unitLabel,
+    showM2Icon,
+    originalPriceBlock,
+    originalUnitBlock,
+    measure,
+  );
+
+  const salePriceBlock: TextBlock = {
+    ...priceBlock,
+    x: priceStartX,
+    y: salePriceY,
+  };
+  const saleUnitBlock: TextBlock = {
+    ...unitBlock,
+    y: saleUnitY,
+  };
+
+  const sale = layoutPriceRow(
+    salePriceText,
+    unitLabel,
+    showM2Icon,
+    salePriceBlock,
+    saleUnitBlock,
+    measure,
+  );
+
+  // Badge aliniat vertical cu rândul prețului vechi (centru pe cifra), ușor mai sus.
+  const originalVisualCenterY = originalPriceY + originalPriceFont * 0.55;
+  const badgeY = Math.round(originalVisualCenterY - badgeHeight * 0.45);
+
+  const strikeHeight = Math.max(
+    20,
+    Math.round(originalPriceFont * (DISCOUNT_STRIKE_NATIVE_SIZE.height / 100)),
+  );
+  const strikeWidth = Math.max(
+    original.price.width * 1.12,
+    Math.round(
+      (DISCOUNT_STRIKE_NATIVE_SIZE.width / DISCOUNT_STRIKE_NATIVE_SIZE.height) * strikeHeight * 0.9,
+    ),
+  );
+
+  return {
+    badge: {
+      x: priceBlock.x,
+      y: badgeY,
+      width: badgeWidth,
+      height: badgeHeight,
+    },
+    original,
+    strike: {
+      x: original.price.x - Math.round(original.price.width * 0.06),
+      y: original.price.y + original.price.fontSize * 0.32,
+      width: strikeWidth,
+      height: strikeHeight,
+    },
+    sale,
+  };
 };
 
 export const alignSecondaryTextY = (

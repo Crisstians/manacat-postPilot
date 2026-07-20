@@ -9,6 +9,7 @@ import {
 } from "../../../shared/announcementTypes";
 import { resolveTemplateImageSource } from "../../templateImageSource";
 import { FitText } from "./FitText";
+import { EXPORT_PIXEL_RATIO } from "./textStyles";
 import { useKonvaImageFromSrc } from "./useKonvaImage";
 
 export interface AnnouncementCanvasHandle {
@@ -47,7 +48,7 @@ const applyExportStageSizing = (
   stage.scale({ x: 1, y: 1 });
   stage.size({ width: template.width, height: template.height });
   stage.getLayers().forEach((layer) => {
-    layer.getCanvas().setPixelRatio(1);
+    layer.getCanvas().setPixelRatio(EXPORT_PIXEL_RATIO);
   });
 };
 
@@ -67,7 +68,10 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
         if (!stage) return null;
         applyExportStageSizing(stage, template);
         stage.draw();
-        const dataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+        const dataUrl = stage.toDataURL({
+          pixelRatio: EXPORT_PIXEL_RATIO,
+          mimeType: "image/png",
+        });
         applyPreviewStageSizing(stage, template, previewScale);
         stage.draw();
         return dataUrl;

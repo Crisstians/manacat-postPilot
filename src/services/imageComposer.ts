@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
+import { EXPORT_OUTPUT_SCALE, exportOutputSize } from "../shared/exportQuality.js";
 import { getDisplayProductImagePath } from "../shared/productImage.js";
 import type { ExportJob, ExportRequest, ExportResult } from "../shared/types.js";
 import { resolveProductImageRect } from "./layout.js";
@@ -55,14 +56,14 @@ const composeBackgroundLayer = async (
   const scaledHeight = Math.ceil(sourceHeight * scale);
 
   return sharp(backgroundPath)
-    .resize(scaledWidth, scaledHeight)
+    .resize(scaledWidth, scaledHeight, { kernel: sharp.kernel.lanczos3 })
     .extract({
       left: Math.max(0, scaledWidth - width),
       top: Math.max(0, scaledHeight - height),
       width,
       height,
     })
-    .png()
+    .png({ compressionLevel: 2, adaptiveFiltering: true })
     .toBuffer();
 };
 
@@ -75,10 +76,13 @@ const normalizeTextOverlay = async (
   const metadata = await overlay.metadata();
 
   if (metadata.width === width && metadata.height === height) {
-    return overlay.png().toBuffer();
+    return overlay.png({ compressionLevel: 2, adaptiveFiltering: true }).toBuffer();
   }
 
-  return overlay.resize(width, height, { fit: "fill" }).png().toBuffer();
+  return overlay
+    .resize(width, height, { fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .png({ compressionLevel: 2, adaptiveFiltering: true })
+    .toBuffer();
 };
 
 export const composePostPngBuffer = async (
@@ -94,6 +98,9 @@ export const composePostPngBuffer = async (
     throw new Error("Overlay-ul text lipseste. Reincarca aplicatia si incearca din nou.");
   }
 
+  const output = exportOutputSize(request.template.width, request.template.height);
+  const s = EXPORT_OUTPUT_SCALE;
+
   const productImageSource = getDisplayProductImagePath(request.product);
   const productInput = request.productImageBase64
     ? Buffer.from(request.productImageBase64, "base64")
@@ -107,16 +114,21 @@ export const composePostPngBuffer = async (
     request.product.productImageLayout,
   );
 
+  const productWidth = Math.round(fitted.width * s);
+  const productHeight = Math.round(fitted.height * s);
+  const productX = Math.round(fitted.x * s);
+  const productY = Math.round(fitted.y * s);
+
   const productLayer = await sharp(productInput)
-    .resize(Math.round(fitted.width), Math.round(fitted.height), { fit: "contain" })
-    .png()
+    .resize(productWidth, productHeight, { fit: "contain", kernel: sharp.kernel.lanczos3 })
+    .png({ compressionLevel: 2, adaptiveFiltering: true })
     .toBuffer();
 
   const shadowEnabled = Boolean(request.product.productImageProcessedPath);
-  const scale =
+  const layoutScale =
     request.template.productLayer.height > 0 ? fitted.height / request.template.productLayer.height : 1;
-  const shadowBlur = Math.round(22 * scale);
-  const shadowOffsetY = Math.round(8 * scale);
+  const shadowBlur = Math.round(22 * layoutScale * s);
+  const shadowOffsetY = Math.round(8 * layoutScale * s);
   const shadowOpacity = 0.35;
 
   const shadowLayer = shadowEnabled
@@ -125,14 +137,14 @@ export const composePostPngBuffer = async (
         .blur(shadowBlur)
         .tint("#000")
         .linear(shadowOpacity, 0)
-        .png()
+        .png({ compressionLevel: 2, adaptiveFiltering: true })
         .toBuffer()
     : null;
 
   const textOverlay = await normalizeTextOverlay(
     request.textOverlayPngBase64,
-    request.template.width,
-    request.template.height,
+    output.width,
+    output.height,
   );
   const backgroundPath = await resolveBackgroundPath(
     request.template.backgroundImagePath,
@@ -140,8 +152,8 @@ export const composePostPngBuffer = async (
   );
   const backgroundLayer = await composeBackgroundLayer(
     backgroundPath,
-    request.template.width,
-    request.template.height,
+    output.width,
+    output.height,
   );
 
   return sharp(backgroundLayer)
@@ -150,15 +162,15 @@ export const composePostPngBuffer = async (
         ? [
             {
               input: shadowLayer,
-              left: Math.round(fitted.x),
-              top: Math.round(fitted.y) + shadowOffsetY,
+              left: productX,
+              top: productY + shadowOffsetY,
             },
           ]
         : []),
-      { input: productLayer, left: Math.round(fitted.x), top: Math.round(fitted.y) },
+      { input: productLayer, left: productX, top: productY },
       { input: textOverlay },
     ])
-    .png()
+    .png({ compressionLevel: 2, adaptiveFiltering: true })
     .toBuffer();
 };
 

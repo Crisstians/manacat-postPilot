@@ -15,7 +15,11 @@ export const EXPORT_REQUIREMENTS: ReadonlyArray<{
   {
     key: "price",
     label: "Preț",
-    check: (product) => product.price > 0,
+    check: (product) => {
+      if (product.price <= 0) return false;
+      if (!product.hasDiscount) return true;
+      return product.originalPrice > 0 && product.originalPrice > product.price;
+    },
   },
   {
     key: "image",

@@ -9,10 +9,13 @@ import {
   fitSingleLineText,
   layoutM2IconY,
   layoutPriceRow,
+  layoutDiscountPriceBlock,
   layoutBottomRows,
   layoutSizeRow,
   resolveBottomRowFontSize,
   BOTTOM_ROWS_GAP,
+  DISCOUNT_BADGE_TO_PRICE_GAP,
+  ORIGINAL_PRICE_FONT_RATIO,
 } from "./layoutEngine.js";
 
 describe("layoutEngine", () => {
@@ -80,6 +83,37 @@ describe("layoutEngine", () => {
 
     expect(layout.icon).toBeUndefined();
     expect(layout.unit.text).toBe("lei/L");
+  });
+
+  it("lays out discount badge, original price above sale, and strike over original", () => {
+    const priceBlock = { ...defaultTemplate.textBlocks.price };
+    const unitBlock = { ...defaultTemplate.textBlocks.unit };
+    const layout = layoutDiscountPriceBlock(
+      "49.99",
+      "69.99",
+      "lei",
+      true,
+      priceBlock,
+      unitBlock,
+      measure,
+    );
+
+    expect(layout.badge.x).toBe(priceBlock.x);
+    expect(layout.original.price.x).toBe(
+      priceBlock.x + layout.badge.width + DISCOUNT_BADGE_TO_PRICE_GAP,
+    );
+    expect(layout.sale.price.x).toBe(layout.original.price.x);
+    expect(layout.sale.price.y).toBe(priceBlock.y);
+    expect(layout.original.price.y).toBeLessThan(layout.sale.price.y);
+    expect(layout.badge.y).toBeLessThan(layout.sale.price.y);
+    expect(layout.original.price.fontSize).toBe(
+      Math.round(priceBlock.fontSize * ORIGINAL_PRICE_FONT_RATIO),
+    );
+    expect(layout.sale.price.fontSize).toBe(priceBlock.fontSize);
+    expect(layout.strike.x).toBeLessThanOrEqual(layout.original.price.x);
+    expect(layout.strike.width).toBeGreaterThan(layout.original.price.width * 0.9);
+    expect(layout.original.icon).toBeDefined();
+    expect(layout.sale.icon).toBeDefined();
   });
 
   it("lays out size row with smaller x and unit text", () => {

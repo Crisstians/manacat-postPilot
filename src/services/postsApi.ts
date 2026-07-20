@@ -30,10 +30,13 @@ export const publishPost = async (
   caption: string,
 ): Promise<PublishPostResult> => {
   const form = new FormData();
+  const mimeType = image.type || "image/png";
   const file =
     image instanceof File
       ? image
-      : new File([image], "post.png", { type: image.type || "image/png" });
+      : new File([image], mimeType === "image/jpeg" ? "post.jpg" : "post.png", {
+          type: mimeType,
+        });
   form.append("image", file);
   form.append("caption", caption);
 
@@ -58,10 +61,13 @@ export const publishBulkPost = async (
 ): Promise<PublishPostResult> => {
   const form = new FormData();
   images.forEach((image, index) => {
+    const mimeType = image.type || "image/png";
     const file =
       image instanceof File
         ? image
-        : new File([image], `post-${index + 1}.png`, { type: image.type || "image/png" });
+        : new File([image], `post-${index + 1}.${mimeType === "image/jpeg" ? "jpg" : "png"}`, {
+            type: mimeType,
+          });
     form.append("images", file);
   });
   form.append("caption", caption);

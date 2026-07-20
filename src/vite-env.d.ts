@@ -8,7 +8,14 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
-import type { ExportRequest, ExportResult, RenderPostResult, TemplateAsset, UpdateStatus } from "./shared/types";
+import type {
+  ExportRequest,
+  ExportResult,
+  PrepareImageResult,
+  RenderPostResult,
+  TemplateAsset,
+  UpdateStatus,
+} from "./shared/types";
 
 declare global {
   interface Window {
@@ -18,7 +25,10 @@ declare global {
       toFileUrl: (filePath: string) => string;
       exportPost: (request: ExportRequest) => Promise<ExportResult>;
       renderPostPng: (request: ExportRequest) => Promise<RenderPostResult>;
+      prepareImageForFacebook: (imageBase64: string) => Promise<PrepareImageResult>;
       onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
+      installUpdate: () => Promise<{ ok: true } | { ok: false; error: string }>;
+      openExternal: (url: string) => Promise<{ ok: true } | { ok: false; error: string }>;
     };
     showSaveFilePicker?: (options?: {
       suggestedName?: string;

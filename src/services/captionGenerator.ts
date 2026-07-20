@@ -6,12 +6,21 @@ const categoryTags: Record<string, string> = {
   vopsea: "#Vopsea",
   parchet: "#Parchet",
   adezivi: "#Adezivi",
+  "produs-general": "#ProdusGeneral",
+};
+
+const formatPriceLine = (product: ProductInput): string => {
+  const current = `${product.price.toFixed(2)} lei/${product.unit}`;
+  if (product.hasDiscount && product.originalPrice > 0) {
+    return `${current} (inainte ${product.originalPrice.toFixed(2)})`;
+  }
+  return current;
 };
 
 export const generateCaption = (product: ProductInput): string => {
   const primaryFeature = product.features[0] ?? "Calitate premium";
   const secondaryFeature = product.features[1] ?? "Rezistenta in timp";
-  const priceText = `${product.price.toFixed(2)} lei/${product.unit}`;
+  const priceText = formatPriceLine(product);
   const categoryTag = categoryTags[product.category] ?? "#MaterialeConstructii";
 
   return [
@@ -32,7 +41,7 @@ export const generateBulkCaption = (products: ProductInput[]): string => {
   }
 
   const lines = products.map((product, index) => {
-    const priceText = `${product.price.toFixed(2)} lei/${product.unit}`;
+    const priceText = formatPriceLine(product);
     return `${index + 1}. ${product.productName} - ${product.category.toUpperCase()} (${priceText})`;
   });
 

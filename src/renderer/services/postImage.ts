@@ -32,6 +32,30 @@ const base64ToBlob = (base64: string, mimeType = "image/png"): Blob => {
   return new Blob([buffer], { type: mimeType });
 };
 
+const blobToBase64 = async (blob: Blob): Promise<string> => {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+};
+
+/** Applies Electron prepareForFacebook when available (2048 + sharpen + PNG/JPEG). */
+export const ensureFacebookReadyBlob = async (blob: Blob): Promise<Blob> => {
+  if (!window.manacatApi?.prepareImageForFacebook) {
+    return blob;
+  }
+  const imageBase64 = await blobToBase64(blob);
+  const result = await window.manacatApi.prepareImageForFacebook(imageBase64);
+  if (!result.success || !result.imageBase64) {
+    throw new Error(result.error ?? "Nu s-a putut pregati imaginea pentru Facebook.");
+  }
+  return base64ToBlob(result.imageBase64, result.mimeType ?? "image/png");
+};
+
 export const buildPostRenderRequest = async (
   previewRef: PostCanvasHandle | null,
   product: ProductInput,
@@ -69,17 +93,19 @@ export const renderPostImageBlob = async (
 
   if (window.manacatApi?.renderPostPng) {
     const result = await window.manacatApi.renderPostPng(request);
-    if (!result.success || !result.pngBase64) {
+    const imageBase64 = result.imageBase64 ?? result.pngBase64;
+    if (!result.success || !imageBase64) {
       throw new Error(result.error ?? "Nu s-a putut genera imaginea pentru publicare.");
     }
-    return base64ToBlob(result.pngBase64);
+    return base64ToBlob(imageBase64, result.mimeType ?? "image/png");
   }
 
   const dataUrl = await previewRef?.exportFullImage();
   if (!dataUrl) {
     return null;
   }
-  return dataUrlToBlob(dataUrl);
+  const raw = await dataUrlToBlob(dataUrl);
+  return ensureFacebookReadyBlob(raw);
 };
 
 export const renderAllDraftImages = async (

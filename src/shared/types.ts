@@ -1,11 +1,23 @@
-export type ProductCategory = "gresie" | "faianta" | "vopsea" | "parchet" | "adezivi";
+export type ProductCategory =
+  | "gresie"
+  | "faianta"
+  | "vopsea"
+  | "parchet"
+  | "adezivi"
+  | "produs-general";
 
 export interface ProductInput {
   productName: string;
   category: ProductCategory;
   /** Subtitlu pe graphic (linii separate cu Enter). */
   subtitle: string;
+  /** Preț curent / după reducere. */
   price: number;
+  /** Preț înainte de reducere (folosit doar când hasDiscount). */
+  originalPrice: number;
+  hasDiscount: boolean;
+  /** Badge „Produs nou” pe graphic. */
+  hasNewProduct: boolean;
   unit: string;
   features: string[];
   description: string;
@@ -75,7 +87,17 @@ export interface ExportResult {
 
 export interface RenderPostResult {
   success: boolean;
+  /** @deprecated Prefer `imageBase64` — kept for compat. */
   pngBase64?: string;
+  imageBase64?: string;
+  mimeType?: string;
+  error?: string;
+}
+
+export interface PrepareImageResult {
+  success: boolean;
+  imageBase64?: string;
+  mimeType?: string;
   error?: string;
 }
 
@@ -109,4 +131,5 @@ export type UpdateStatus =
   | { phase: "not-available" }
   | { phase: "downloading"; percent: number }
   | { phase: "downloaded"; version: string }
+  | { phase: "installing"; version: string }
   | { phase: "error"; message: string };

@@ -15,4 +15,8 @@ describe("unitForCategory", () => {
   it("returns kg for adezivi", () => {
     expect(unitForCategory("adezivi")).toBe("kg");
   });
+
+  it("returns buc for produs-general", () => {
+    expect(unitForCategory("produs-general")).toBe("buc");
+  });
 });

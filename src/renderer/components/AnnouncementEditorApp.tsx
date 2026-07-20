@@ -8,6 +8,7 @@ import {
   isAnnouncementExportReady,
   type AnnouncementDraft,
 } from "../../shared/announcementTypes";
+import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
 import { getPostTypeDefinition, type AnnouncementPostType } from "../../shared/postTypes";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -22,6 +23,10 @@ import { AnnouncementForm, getAnnouncementDraftLabel } from "./AnnouncementForm"
 import { AppHeader } from "./AppHeader";
 import { CaptionEditor } from "./CaptionEditor";
 import { AnnouncementCanvas, type AnnouncementCanvasHandle } from "./konva/AnnouncementCanvas";
+import {
+  ANNOUNCEMENT_PUBLISH_CHECKLIST,
+  PublishConfirmModal,
+} from "./PublishConfirmModal";
 import { TemplateControls } from "./TemplateControls";
 
 const bundledTemplateModules = import.meta.glob(
@@ -54,6 +59,9 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
   const [activePanel, setActivePanel] = useState<"content" | "template">(initialSession.activePanel);
   const [busy, setBusy] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [publishPreviewUrls, setPublishPreviewUrls] = useState<string[]>([]);
+  const [publishPreviewLoading, setPublishPreviewLoading] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [showFieldHints, setShowFieldHints] = useState(false);
   const [actionLoading, setActionLoading] = useState<ActionLoadingState | null>(null);
@@ -159,6 +167,46 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
     }
   };
 
+  const onRequestPublish = async () => {
+    if (!exportReady) {
+      setShowFieldHints(true);
+      showError(`Completează: ${missingForExport.join(", ")}`);
+      return;
+    }
+    if (!accessToken) {
+      showError("Sesiunea a expirat. Autentifică-te din nou.");
+      return;
+    }
+
+    for (const url of publishPreviewUrls) {
+      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    }
+    setPublishPreviewUrls([]);
+    setPublishConfirmOpen(true);
+    setPublishPreviewLoading(true);
+
+    try {
+      const dataUrl = await previewRef.current?.exportFullImage();
+      if (dataUrl) {
+        setPublishPreviewUrls([dataUrl]);
+        return;
+      }
+      const image = await renderAnnouncementImageBlob(async () =>
+        previewRef.current?.exportFullImage() ?? null,
+      );
+      if (image) {
+        setPublishPreviewUrls([URL.createObjectURL(image)]);
+      }
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "Nu s-a putut genera preview-ul pentru confirmare.",
+      );
+      setPublishConfirmOpen(false);
+    } finally {
+      setPublishPreviewLoading(false);
+    }
+  };
+
   const onPublish = async () => {
     if (!exportReady) {
       setShowFieldHints(true);
@@ -192,6 +240,12 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
       });
       const result = await publishPost(accessToken, image, caption);
       showSuccess(`Postare publicată pe Facebook (ID: ${result.facebookPostId}).`);
+      setPublishConfirmOpen(false);
+      for (const url of publishPreviewUrls) {
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+      }
+      setPublishPreviewUrls([]);
+      await openFacebookPostInBrowser(result.facebookPostId);
     } catch (error) {
       showError(error instanceof Error ? error.message : "Publicarea a eșuat.");
     } finally {
@@ -205,6 +259,24 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
+      <PublishConfirmModal
+        open={publishConfirmOpen}
+        title="Confirmă publicarea pe Facebook"
+        caption={draft.facebookCaption.trim() || suggestedCaption}
+        checklist={ANNOUNCEMENT_PUBLISH_CHECKLIST}
+        previewUrls={publishPreviewUrls}
+        previewLoading={publishPreviewLoading}
+        confirmBusy={publishBusy}
+        onCancel={() => {
+          if (publishBusy) return;
+          setPublishConfirmOpen(false);
+          for (const url of publishPreviewUrls) {
+            if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+          }
+          setPublishPreviewUrls([]);
+        }}
+        onConfirm={() => void onPublish()}
+      />
       <AppHeader
         onBack={onBack}
         subtitle={postTypeDef.label}
@@ -328,7 +400,7 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
                 <button
                   type="button"
                   className="btn btn-info btn-sm min-w-52"
-                  onClick={() => void onPublish()}
+                  onClick={() => void onRequestPublish()}
                   disabled={actionBusy || !exportReady}
                 >
                   {publishBusy ? (

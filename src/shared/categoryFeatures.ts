@@ -78,6 +78,13 @@ export const categoryFeatureOptions: Record<ProductCategory, string[]> = {
     "Spumă",
     "Mastic",
   ],
+  "produs-general": [
+    "Premium",
+    "Standard",
+    "Promotie",
+    "Noutate",
+    "Oferta",
+  ],
 };
 
 export const featureOptionsForCategory = (category: ProductCategory): string[] =>

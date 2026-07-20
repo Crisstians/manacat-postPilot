@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import type { AppUpdater } from "electron-updater";
 import type { UpdateStatus } from "../src/shared/types.js";
 
@@ -8,11 +8,15 @@ const { autoUpdater } = require("electron-updater") as { autoUpdater: AppUpdater
 
 let lastUpdateStatus: UpdateStatus | null = null;
 let updateCheckStarted = false;
+let installRequested = false;
+let downloadedVersion: string | null = null;
 
 const sendUpdateStatus = (status: UpdateStatus): void => {
   lastUpdateStatus = status;
   for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("update:status", status);
+    if (!window.isDestroyed()) {
+      window.webContents.send("update:status", status);
+    }
   }
 };
 
@@ -22,6 +26,21 @@ const startUpdateCheck = (): void => {
   }
   updateCheckStarted = true;
   void autoUpdater.checkForUpdates();
+};
+
+const installDownloadedUpdate = (): void => {
+  if (installRequested) {
+    return;
+  }
+  installRequested = true;
+
+  const version = downloadedVersion ?? "nouă";
+  sendUpdateStatus({ phase: "installing", version });
+
+  // Lasă renderer-ul să afișeze overlay-ul înainte de quit.
+  setTimeout(() => {
+    autoUpdater.quitAndInstall(false, true);
+  }, 700);
 };
 
 export const setupAutoUpdater = (getMainWindow: () => BrowserWindow | null): void => {
@@ -34,6 +53,13 @@ export const setupAutoUpdater = (getMainWindow: () => BrowserWindow | null): voi
   autoUpdater.logger = console;
 
   ipcMain.handle("update:getStatus", () => lastUpdateStatus);
+  ipcMain.handle("update:installAndRestart", () => {
+    if (lastUpdateStatus?.phase !== "downloaded" && lastUpdateStatus?.phase !== "installing") {
+      return { ok: false as const, error: "Nu există o actualizare gata de instalare." };
+    }
+    installDownloadedUpdate();
+    return { ok: true as const };
+  });
 
   autoUpdater.on("checking-for-update", () => {
     sendUpdateStatus({ phase: "checking" });
@@ -52,22 +78,8 @@ export const setupAutoUpdater = (getMainWindow: () => BrowserWindow | null): voi
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    downloadedVersion = info.version;
     sendUpdateStatus({ phase: "downloaded", version: info.version });
-    void dialog
-      .showMessageBox({
-        type: "info",
-        title: "Actualizare disponibilă",
-        message: "O versiune nouă a fost descărcată.",
-        detail: "Repornește aplicația pentru a instala actualizarea.",
-        buttons: ["Repornește acum", "Mai târziu"],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          autoUpdater.quitAndInstall();
-        }
-      });
   });
 
   autoUpdater.on("error", (error) => {

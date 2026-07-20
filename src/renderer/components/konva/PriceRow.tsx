@@ -1,15 +1,27 @@
 import { Group, Image, Text } from "react-konva";
 import { useLayoutEffect, useMemo, useState } from "react";
 import m2UnitateIcon from "../../../assets/unitati/m2Unitate.png";
+import pretRedusBadge from "../../../assets/poze/pretRedus.png";
+import pretRedusLinie from "../../../assets/poze/pretRedusLinie.png";
+import produsNouBadge from "../../../assets/poze/produsNou.png";
 import {
+  HANGING_BADGE_GAP,
   M2_ICON_NATIVE_SIZE,
   PRICE_UNIT_GAP,
   UNIT_ICON_GAP,
   createCanvasTextMeasurer,
   createEstimateTextMeasurer,
+  layoutDiscountPriceBlock,
+  layoutHangingBadgeSize,
   layoutM2IconY,
   layoutPriceRow,
+  type DiscountPriceBlockLayout,
+  type PriceRowLayout,
 } from "../../../services/layoutEngine";
+import {
+  applyDiscountLayoutOverrides,
+  loadCommittedDiscountLayoutOverrides,
+} from "../../../shared/discountLayoutOverrides";
 import type { TextBlock } from "../../../shared/types";
 import { GARET_FONT, TEXT_GLOW, konvaFontStyle } from "./textStyles";
 import { measureKonvaTextWidth, preloadGaretFonts } from "./measureKonvaText";
@@ -17,6 +29,9 @@ import { useKonvaImage } from "./useKonvaImage";
 
 interface PriceRowProps {
   priceText: string;
+  originalPriceText?: string;
+  hasDiscount?: boolean;
+  hasNewProduct?: boolean;
   unitLabel: string;
   showM2Icon: boolean;
   priceBlock: TextBlock;
@@ -31,72 +46,66 @@ interface MeasuredRowLayout {
   iconHeight: number;
 }
 
-export function PriceRow({ priceText, unitLabel, showM2Icon, priceBlock, unitBlock }: PriceRowProps) {
-  const measure = useMemo(
-    () => createCanvasTextMeasurer() ?? createEstimateTextMeasurer(),
-    [],
-  );
-  const iconImage = useKonvaImage(showM2Icon ? m2UnitateIcon : undefined);
+interface MeasuredDiscountLayout {
+  original: MeasuredRowLayout;
+  sale: MeasuredRowLayout;
+  strikeWidth: number;
+}
 
-  const layout = useMemo(
-    () => layoutPriceRow(priceText, unitLabel, showM2Icon, priceBlock, unitBlock, measure),
-    [priceText, unitLabel, showM2Icon, priceBlock, unitBlock, measure],
-  );
+const measurePriceUnitRow = async (
+  priceText: string,
+  unitLabel: string,
+  price: PriceRowLayout["price"],
+  unit: PriceRowLayout["unit"],
+  priceBlock: TextBlock,
+  unitBlock: TextBlock,
+): Promise<MeasuredRowLayout> => {
+  await preloadGaretFonts([price.fontSize, unit.fontSize]);
 
-  const [measuredLayout, setMeasuredLayout] = useState<MeasuredRowLayout | null>(null);
+  const priceWidth = measureKonvaTextWidth({
+    text: priceText,
+    fontSize: price.fontSize,
+    fontStyle: konvaFontStyle(priceBlock),
+  });
+  const unitWidth = measureKonvaTextWidth({
+    text: unitLabel,
+    fontSize: unit.fontSize,
+    fontStyle: konvaFontStyle(unitBlock),
+  });
 
-  useLayoutEffect(() => {
-    let cancelled = false;
+  const unitX = price.x + priceWidth + PRICE_UNIT_GAP;
+  const iconHeight = Math.round(unit.fontSize * 0.98);
+  const iconWidth = Math.round((M2_ICON_NATIVE_SIZE.width / M2_ICON_NATIVE_SIZE.height) * iconHeight);
 
-    const measureRow = async () => {
-      await preloadGaretFonts([layout.price.fontSize, layout.unit.fontSize]);
-      if (cancelled) {
-        return;
-      }
+  return {
+    unitX,
+    iconX: unitX + unitWidth + UNIT_ICON_GAP,
+    iconY: layoutM2IconY(unit.y, unit.fontSize, iconHeight),
+    iconWidth,
+    iconHeight,
+  };
+};
 
-      const priceWidth = measureKonvaTextWidth({
-        text: priceText,
-        fontSize: layout.price.fontSize,
-        fontStyle: konvaFontStyle(priceBlock),
-      });
-      const unitWidth = measureKonvaTextWidth({
-        text: unitLabel,
-        fontSize: layout.unit.fontSize,
-        fontStyle: konvaFontStyle(unitBlock),
-      });
-
-      const unitX = priceBlock.x + priceWidth + PRICE_UNIT_GAP;
-      const iconHeight = Math.round(layout.unit.fontSize * 0.98);
-      const iconWidth = Math.round((M2_ICON_NATIVE_SIZE.width / M2_ICON_NATIVE_SIZE.height) * iconHeight);
-
-      setMeasuredLayout({
-        unitX,
-        iconX: unitX + unitWidth + UNIT_ICON_GAP,
-        iconY: layoutM2IconY(unitBlock.y, layout.unit.fontSize, iconHeight),
-        iconWidth,
-        iconHeight,
-      });
-    };
-
-    void measureRow();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    priceText,
-    unitLabel,
-    showM2Icon,
-    priceBlock,
-    unitBlock,
-    layout.price.fontSize,
-    layout.unit.fontSize,
-  ]);
-
-  const unitX = measuredLayout?.unitX ?? layout.unit.x;
-  const iconX = measuredLayout?.iconX ?? layout.icon?.x ?? 0;
-  const iconY = measuredLayout?.iconY ?? layout.icon?.y ?? 0;
-  const iconWidth = measuredLayout?.iconWidth ?? layout.icon?.width ?? 0;
-  const iconHeight = measuredLayout?.iconHeight ?? layout.icon?.height ?? 0;
+function PriceTexts({
+  layout,
+  measured,
+  priceBlock,
+  unitBlock,
+  showM2Icon,
+  iconImage,
+}: {
+  layout: PriceRowLayout;
+  measured: MeasuredRowLayout | null;
+  priceBlock: TextBlock;
+  unitBlock: TextBlock;
+  showM2Icon: boolean;
+  iconImage: HTMLImageElement | null | undefined;
+}) {
+  const unitX = measured?.unitX ?? layout.unit.x;
+  const iconX = measured?.iconX ?? layout.icon?.x ?? 0;
+  const iconY = measured?.iconY ?? layout.icon?.y ?? 0;
+  const iconWidth = measured?.iconWidth ?? layout.icon?.width ?? 0;
+  const iconHeight = measured?.iconHeight ?? layout.icon?.height ?? 0;
 
   return (
     <Group>
@@ -120,10 +129,10 @@ export function PriceRow({ priceText, unitLabel, showM2Icon, priceBlock, unitBlo
         fontStyle={konvaFontStyle(unitBlock)}
         fill={unitBlock.fill}
         lineHeight={unitBlock.lineHeight}
-        opacity={measuredLayout ? 1 : 0}
+        opacity={measured ? 1 : 0}
         {...TEXT_GLOW}
       />
-      {showM2Icon && iconImage && measuredLayout ? (
+      {showM2Icon && iconImage && measured ? (
         <Image
           image={iconImage}
           x={iconX}
@@ -136,6 +145,249 @@ export function PriceRow({ priceText, unitLabel, showM2Icon, priceBlock, unitBlo
           shadowOpacity={0.85}
         />
       ) : null}
+    </Group>
+  );
+}
+
+export function PriceRow({
+  priceText,
+  originalPriceText,
+  hasDiscount = false,
+  hasNewProduct = false,
+  unitLabel,
+  showM2Icon,
+  priceBlock,
+  unitBlock,
+}: PriceRowProps) {
+  const measure = useMemo(
+    () => createCanvasTextMeasurer() ?? createEstimateTextMeasurer(),
+    [],
+  );
+  const iconImage = useKonvaImage(showM2Icon ? m2UnitateIcon : undefined);
+  const discountBadgeImage = useKonvaImage(hasDiscount ? pretRedusBadge : undefined);
+  const newProductBadgeImage = useKonvaImage(hasNewProduct ? produsNouBadge : undefined);
+  const strikeImage = useKonvaImage(hasDiscount ? pretRedusLinie : undefined);
+
+  const committedOverrides = useMemo(() => loadCommittedDiscountLayoutOverrides(), []);
+
+  const saleLayout = useMemo(
+    () => layoutPriceRow(priceText, unitLabel, showM2Icon, priceBlock, unitBlock, measure),
+    [priceText, unitLabel, showM2Icon, priceBlock, unitBlock, measure],
+  );
+
+  const discountLayout = useMemo((): DiscountPriceBlockLayout | null => {
+    if (!hasDiscount || !originalPriceText) return null;
+    const base = layoutDiscountPriceBlock(
+      priceText,
+      originalPriceText,
+      unitLabel,
+      showM2Icon,
+      priceBlock,
+      unitBlock,
+      measure,
+    );
+    return applyDiscountLayoutOverrides(base, committedOverrides);
+  }, [
+    hasDiscount,
+    originalPriceText,
+    priceText,
+    unitLabel,
+    showM2Icon,
+    priceBlock,
+    unitBlock,
+    measure,
+    committedOverrides,
+  ]);
+
+  const badgeSize = useMemo(() => layoutHangingBadgeSize(priceBlock), [priceBlock]);
+
+  const discountBadgePos = useMemo(() => {
+    if (discountLayout) {
+      return {
+        x: discountLayout.badge.x,
+        y: discountLayout.badge.y,
+        width: discountLayout.badge.width,
+        height: discountLayout.badge.height,
+      };
+    }
+    const fallback = committedOverrides.badge ?? {
+      x: priceBlock.x,
+      y: Math.max(0, priceBlock.y - 450),
+    };
+    return { ...fallback, ...badgeSize };
+  }, [discountLayout, committedOverrides.badge, badgeSize, priceBlock.x, priceBlock.y]);
+
+  const newProductBadgePos = useMemo(() => {
+    if (hasDiscount) {
+      if (committedOverrides.newProductBadge) {
+        return { ...committedOverrides.newProductBadge, ...badgeSize };
+      }
+      return {
+        x: discountBadgePos.x + discountBadgePos.width + HANGING_BADGE_GAP,
+        y: discountBadgePos.y,
+        ...badgeSize,
+      };
+    }
+    return {
+      x: discountBadgePos.x,
+      y: discountBadgePos.y,
+      ...badgeSize,
+    };
+  }, [committedOverrides.newProductBadge, hasDiscount, discountBadgePos, badgeSize]);
+
+  const [measuredSale, setMeasuredSale] = useState<MeasuredRowLayout | null>(null);
+  const [measuredDiscount, setMeasuredDiscount] = useState<MeasuredDiscountLayout | null>(null);
+
+  useLayoutEffect(() => {
+    if (discountLayout) {
+      return;
+    }
+
+    let cancelled = false;
+    void measurePriceUnitRow(
+      priceText,
+      unitLabel,
+      saleLayout.price,
+      saleLayout.unit,
+      priceBlock,
+      unitBlock,
+    ).then((next) => {
+      if (!cancelled) setMeasuredSale(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    discountLayout,
+    priceText,
+    unitLabel,
+    saleLayout.price,
+    saleLayout.unit,
+    priceBlock,
+    unitBlock,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!discountLayout || !originalPriceText) {
+      setMeasuredDiscount(null);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      const [original, sale] = await Promise.all([
+        measurePriceUnitRow(
+          originalPriceText,
+          unitLabel,
+          discountLayout.original.price,
+          discountLayout.original.unit,
+          priceBlock,
+          unitBlock,
+        ),
+        measurePriceUnitRow(
+          priceText,
+          unitLabel,
+          discountLayout.sale.price,
+          discountLayout.sale.unit,
+          priceBlock,
+          unitBlock,
+        ),
+      ]);
+
+      if (cancelled) return;
+
+      const originalPriceWidth = measureKonvaTextWidth({
+        text: originalPriceText,
+        fontSize: discountLayout.original.price.fontSize,
+        fontStyle: konvaFontStyle(priceBlock),
+      });
+
+      setMeasuredDiscount({
+        original,
+        sale,
+        strikeWidth: Math.max(originalPriceWidth * 1.08, discountLayout.strike.width),
+      });
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [discountLayout, originalPriceText, priceText, unitLabel, priceBlock, unitBlock]);
+
+  const badges = (
+    <>
+      {hasDiscount && discountBadgeImage ? (
+        <Image
+          image={discountBadgeImage}
+          x={discountBadgePos.x}
+          y={discountBadgePos.y}
+          width={discountBadgePos.width}
+          height={discountBadgePos.height}
+          imageSmoothingEnabled
+        />
+      ) : null}
+      {hasNewProduct && newProductBadgeImage ? (
+        <Image
+          image={newProductBadgeImage}
+          x={newProductBadgePos.x}
+          y={newProductBadgePos.y}
+          width={newProductBadgePos.width}
+          height={newProductBadgePos.height}
+          imageSmoothingEnabled
+        />
+      ) : null}
+    </>
+  );
+
+  if (discountLayout) {
+    const strikeWidth = measuredDiscount?.strikeWidth ?? discountLayout.strike.width;
+
+    return (
+      <Group>
+        {badges}
+        <PriceTexts
+          layout={discountLayout.original}
+          measured={measuredDiscount?.original ?? null}
+          priceBlock={priceBlock}
+          unitBlock={unitBlock}
+          showM2Icon={showM2Icon}
+          iconImage={iconImage}
+        />
+        {strikeImage ? (
+          <Image
+            image={strikeImage}
+            x={discountLayout.strike.x}
+            y={discountLayout.strike.y}
+            width={strikeWidth}
+            height={discountLayout.strike.height}
+            imageSmoothingEnabled
+          />
+        ) : null}
+        <PriceTexts
+          layout={discountLayout.sale}
+          measured={measuredDiscount?.sale ?? null}
+          priceBlock={priceBlock}
+          unitBlock={unitBlock}
+          showM2Icon={showM2Icon}
+          iconImage={iconImage}
+        />
+      </Group>
+    );
+  }
+
+  return (
+    <Group>
+      {badges}
+      <PriceTexts
+        layout={saleLayout}
+        measured={measuredSale}
+        priceBlock={priceBlock}
+        unitBlock={unitBlock}
+        showM2Icon={showM2Icon}
+        iconImage={iconImage}
+      />
     </Group>
   );
 }

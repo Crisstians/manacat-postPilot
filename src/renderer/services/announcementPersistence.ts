@@ -54,5 +54,29 @@ export const renderAnnouncementImageBlob = async (
   const dataUrl = await exportFullImage?.();
   if (!dataUrl) return null;
   const response = await fetch(dataUrl);
-  return response.blob();
+  const raw = await response.blob();
+
+  if (!window.manacatApi?.prepareImageForFacebook) {
+    return raw;
+  }
+
+  const buffer = await raw.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  const result = await window.manacatApi.prepareImageForFacebook(btoa(binary));
+  if (!result.success || !result.imageBase64) {
+    throw new Error(result.error ?? "Nu s-a putut pregati imaginea pentru Facebook.");
+  }
+
+  const mimeType = result.mimeType ?? "image/png";
+  const decoded = atob(result.imageBase64);
+  const out = new Uint8Array(decoded.length);
+  for (let i = 0; i < decoded.length; i += 1) {
+    out[i] = decoded.charCodeAt(i);
+  }
+  return new Blob([out], { type: mimeType });
 };

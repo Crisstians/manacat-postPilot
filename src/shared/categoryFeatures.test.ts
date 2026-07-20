@@ -55,6 +55,15 @@ describe("categoryFeatures", () => {
     expect(options).toContain("Lemn brut");
   });
 
+  it("returns produs-general feature options", () => {
+    const options = featureOptionsForCategory("produs-general");
+
+    expect(options).toHaveLength(5);
+    expect(options[0]).toBe("Premium");
+    expect(options).toContain("Noutate");
+    expect(options).toContain("Oferta");
+  });
+
   it("validates feature against category options", () => {
     expect(isValidFeatureForCategory("gresie", "Matt")).toBe(true);
     expect(isValidFeatureForCategory("gresie", "Polisat")).toBe(true);
@@ -66,6 +75,8 @@ describe("categoryFeatures", () => {
     expect(isValidFeatureForCategory("adezivi", "Mastic")).toBe(true);
     expect(isValidFeatureForCategory("parchet", "Mat")).toBe(true);
     expect(isValidFeatureForCategory("parchet", "Uleiat cu ceară")).toBe(true);
+    expect(isValidFeatureForCategory("produs-general", "Premium")).toBe(true);
+    expect(isValidFeatureForCategory("produs-general", "Matt")).toBe(false);
     expect(isValidFeatureForCategory("parchet", "Ultramată")).toBe(false);
     expect(isValidFeatureForCategory("vopsea", "Matt")).toBe(false);
   });

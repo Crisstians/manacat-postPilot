@@ -35,7 +35,6 @@ function AppContent() {
 
   return (
     <>
-      <UpdateNotifier />
       {screen.view === "home" ? (
         <HomePage
           onSelect={(postType) => setScreen({ view: "editor", postType })}
@@ -64,6 +63,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
+        <UpdateNotifier />
         <AuthGate>
           <AppContent />
         </AuthGate>

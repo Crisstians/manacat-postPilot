@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } f
 import type { TemplateAsset } from "../src/shared/types.js";
 import { generateCaption } from "../src/services/captionGenerator.js";
 import { exportPostAssets, composePostPngBuffer } from "../src/services/imageComposer.js";
+import { prepareForFacebook } from "../src/services/prepareForFacebook.js";
 import type { ExportRequest } from "../src/shared/types.js";
 import { setupAutoUpdater } from "./autoUpdater.js";
 
@@ -140,6 +141,8 @@ const createWindow = async (): Promise<void> => {
     width: 1440,
     height: 940,
     autoHideMenuBar: true,
+    backgroundColor: "#f5f5f6",
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -156,6 +159,10 @@ const createWindow = async (): Promise<void> => {
   mainWindow.on("page-title-updated", (event) => {
     event.preventDefault();
     mainWindow?.setTitle(APP_NAME);
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
   });
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -216,6 +223,24 @@ ipcMain.handle("dialog:pickProductImage", async () =>
   pickImage("Alege poza produsului"),
 );
 
+ipcMain.handle(
+  "shell:openExternal",
+  async (_event, url: unknown): Promise<{ ok: true } | { ok: false; error: string }> => {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      return { ok: false, error: "URL invalid." };
+    }
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : "Nu s-a putut deschide browserul.",
+      };
+    }
+  },
+);
+
 ipcMain.handle("post:export", async (_, payload: ExportRequest) => {
   const savePath = await dialog.showSaveDialog({
     title: "Salvează imaginea postării",
@@ -250,20 +275,44 @@ ipcMain.handle("post:renderPng", async (_, payload: ExportRequest) => {
       return { success: false, error: "Overlay-ul text lipseste." };
     }
 
-    const pngBuffer = await composePostPngBuffer({
+    const composed = await composePostPngBuffer({
       ...payload,
       textOverlayPngBase64: payload.textOverlayPngBase64,
       templatesDir: getTemplatesDir(),
     });
+    const prepared = await prepareForFacebook(composed);
+    const imageBase64 = prepared.buffer.toString("base64");
 
     return {
       success: true,
-      pngBase64: pngBuffer.toString("base64"),
+      imageBase64,
+      pngBase64: imageBase64,
+      mimeType: prepared.mimeType,
     };
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Nu s-a putut genera imaginea.",
+    };
+  }
+});
+
+ipcMain.handle("image:prepareForFacebook", async (_, payload: { imageBase64: string }) => {
+  try {
+    const raw = payload?.imageBase64?.replace(/^data:image\/[a-zA-Z+]+;base64,/, "") ?? "";
+    if (!raw) {
+      return { success: false, error: "Imaginea lipseste." };
+    }
+    const prepared = await prepareForFacebook(Buffer.from(raw, "base64"));
+    return {
+      success: true,
+      imageBase64: prepared.buffer.toString("base64"),
+      mimeType: prepared.mimeType,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Nu s-a putut pregati imaginea pentru Facebook.",
     };
   }
 });
