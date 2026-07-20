@@ -3,6 +3,8 @@ export type ProductCategory = "gresie" | "faianta" | "vopsea" | "parchet" | "ade
 export interface ProductInput {
   productName: string;
   category: ProductCategory;
+  /** Subtitlu pe graphic (linii separate cu Enter). */
+  subtitle: string;
   price: number;
   unit: string;
   features: string[];
@@ -89,6 +91,8 @@ export interface PostDraft {
   id: string;
   product: ProductInput;
   template: TemplateLayout;
+  facebookCaption: string;
+  facebookCaptionTouched: boolean;
 }
 
 export const MAX_BULK_POSTS = 10;

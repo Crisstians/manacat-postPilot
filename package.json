@@ -23,8 +23,7 @@
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
     "electron-updater": "^6.8.9",
-    "flowbite": "^4.0.2",
-    "flowbite-react": "^0.12.17",
+    "flyonui": "^2.4.1",
     "konva": "^10.3.0",
     "lucide-react": "^1.23.0",
     "onnxruntime-web": "^1.21.0",
@@ -63,7 +62,9 @@
     ],
     "mac": {
       "icon": "build/icon.png",
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -78,7 +79,9 @@
     },
     "win": {
       "icon": "build/icon.png",
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "nsis": {
       "oneClick": false,

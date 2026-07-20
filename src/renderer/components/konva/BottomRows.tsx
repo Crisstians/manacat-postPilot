@@ -50,6 +50,7 @@ export function BottomRows({
             y={layout.size.icon.y}
             width={layout.size.icon.width}
             height={layout.size.icon.height}
+            imageSmoothingEnabled
             shadowColor="#000000"
             shadowBlur={10}
             shadowOpacity={0.8}
@@ -79,6 +80,7 @@ export function BottomRows({
             y={layout.feature.icon.y}
             width={layout.feature.icon.width}
             height={layout.feature.icon.height}
+            imageSmoothingEnabled
             shadowColor="#000000"
             shadowBlur={10}
             shadowOpacity={0.8}

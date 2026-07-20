@@ -14,6 +14,10 @@ dist-electron
 release
 *.local
 .env
+.env.*
+
+# Accidental TypeScript emit inside src/
+src/**/*.js
 
 # Editor directories and files
 .vscode/*

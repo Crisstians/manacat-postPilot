@@ -10,6 +10,7 @@ import { resolveProductImageSource } from "../../productImageSource";
 import { resolveTemplateImageSource } from "../../templateImageSource";
 import type { LayerRect, ProductInput, TemplateLayout } from "../../../shared/types";
 import { splitProductNameLines } from "../../../shared/productFieldLimits";
+import { getProductSubtitleLines } from "../../../shared/productSubtitle";
 import { isSquareMeterUnit, unitPriceSuffixText } from "../../../shared/unitDisplay";
 import { BottomRows } from "./BottomRows";
 import { FitText } from "./FitText";
@@ -30,12 +31,42 @@ interface PostCanvasProps {
   onProductImageLayoutChange?: (layout: LayerRect) => void;
 }
 
+const getPreviewPixelRatio = (): number => {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  return Math.min(window.devicePixelRatio || 1, 2);
+};
+
+const applyPreviewStageSizing = (
+  stage: Konva.Stage,
+  template: { width: number; height: number },
+  previewScale: number,
+) => {
+  stage.scale({ x: previewScale, y: previewScale });
+  stage.size({
+    width: template.width * previewScale,
+    height: template.height * previewScale,
+  });
+  stage.getLayers().forEach((layer) => {
+    layer.getCanvas().setPixelRatio(getPreviewPixelRatio());
+  });
+};
+
+const applyExportStageSizing = (
+  stage: Konva.Stage,
+  template: { width: number; height: number },
+) => {
+  stage.scale({ x: 1, y: 1 });
+  stage.size({ width: template.width, height: template.height });
+  stage.getLayers().forEach((layer) => {
+    layer.getCanvas().setPixelRatio(1);
+  });
+};
+
 const resolveImageSrc = (path: string): string => resolveProductImageSource(path);
 
 const resolveBackgroundSrc = (path: string): string => resolveTemplateImageSource(path);
-
-const getSubtitleText = (category: ProductInput["category"]): string =>
-  category === "gresie" ? "Placă ceramică\nPremium" : category;
 
 const isProductImageTarget = (target: Konva.Node): boolean => {
   if (target.name() === "product-image") {
@@ -105,7 +136,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     setIsProductSelected(false);
   }, [product.productImagePath]);
 
-  const subtitleLines = getSubtitleText(product.category).split("\n");
+  const subtitleLines = getProductSubtitleLines(product);
   const productNameLines = splitProductNameLines(product.productName || "Nume produs");
   const featureText = product.features[0] ?? "-";
   const priceText = Number.isFinite(product.price) ? product.price.toFixed(2) : "0.00";
@@ -113,17 +144,38 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   const showM2Icon = isSquareMeterUnit(product.unit);
   const shadowEnabled = Boolean(product.productImageProcessedPath);
 
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const ratio = getPreviewPixelRatio();
+    stage.getLayers().forEach((layer) => {
+      layer.getCanvas().setPixelRatio(ratio);
+    });
+    stage.batchDraw();
+  }, [previewScale]);
+
   useImperativeHandle(ref, () => ({
     async exportTextOverlay() {
       await document.fonts.ready;
+      const stage = stageRef.current;
       const layer = textLayerRef.current;
-      if (!layer) {
+      if (!stage || !layer) {
         return null;
       }
-      return layer.toDataURL({
-        pixelRatio: previewScale > 0 ? 1 / previewScale : 1,
+
+      applyExportStageSizing(stage, template);
+      stage.draw();
+
+      const dataUrl = layer.toDataURL({
+        pixelRatio: 1,
         mimeType: "image/png",
       });
+
+      applyPreviewStageSizing(stage, template, previewScale);
+      stage.draw();
+
+      return dataUrl;
     },
     async exportFullImage() {
       await document.fonts.ready;
@@ -137,12 +189,14 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
       const placeholder = stage.findOne((node: Konva.Node) => node.name() === "product-placeholder");
       const placeholderWasVisible = placeholder?.visible() ?? false;
       placeholder?.visible(false);
+
+      applyExportStageSizing(stage, template);
       stage.draw();
 
-      const pixelRatio = previewScale > 0 ? 1 / previewScale : 1;
-      const dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+      const dataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
 
       placeholder?.visible(placeholderWasVisible);
+      applyPreviewStageSizing(stage, template, previewScale);
       stage.draw();
 
       return dataUrl;
@@ -174,6 +228,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
             y={backgroundRect.y}
             width={backgroundRect.width}
             height={backgroundRect.height}
+            imageSmoothingEnabled
           />
         ) : null}
 
@@ -198,6 +253,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
             y={productRect.y}
             width={productRect.width}
             height={productRect.height}
+            imageSmoothingEnabled
           />
         ) : null}
       </Layer>

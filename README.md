@@ -1,32 +1,61 @@
-# React + TypeScript + Vite
+# Manacat PostPilot
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicație desktop pentru echipa Manacat — compune postări pentru Facebook direct din produsele magazinului, fără Photoshop și fără copy-paste manual.
 
-Currently, two official plugins are available:
+PostPilot acoperă trei tipuri de conținut: **promovare produs** (graphic cu preț, poză și caracteristici), **anunț magazin** (program, reduceri, evenimente) și **anunț angajări**. Editorul lucrează pe template-uri Manacat; la final, postarea pleacă pe pagina de Facebook prin API-ul intern.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Disponibil pe **Windows** și **macOS**, cu actualizări automate după instalare.
 
-## React Compiler
+## Descărcare
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Instalatorul este în [Releases](https://github.com/Crisstians/manacat-postPilot/releases/latest).
 
-## Expanding the Oxlint configuration
+## Dezvoltare locală
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Cerințe: Node.js 22, npm.
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Pornește Vite pe portul 5180 și Electron cu hot reload. Pentru build de producție:
+
+```bash
+npm run build:app
+```
+
+## Release
+
+Actualizează versiunea în `package.json`, apoi:
+
+```bash
+git tag v1.0.5
+git push origin v1.0.5
+```
+
+GitHub Actions construiește `.exe` (Windows) și `.dmg` (macOS) și le publică în Releases. Dacă workflow-ul eșuează, verifică **Actions → Release**. La rate limit GitHub, așteaptă ~10 minute și re-rulează.
+
+## Structură
+
+```
+electron/          Proces principal, IPC, auto-updater
+src/renderer/      Interfață React
+src/services/      Compunere imagini, caption, API
+src/shared/        Tipuri, draft-uri, logică comună
+```
+
+Backend-ul (autentificare, publicare Facebook) rulează separat pe Railway. Aplicația se conectează la el la login; URL-ul implicit e configurat în `src/config/api.ts`.
+
+## Scripturi utile
+
+| Comandă | Ce face |
+|---|---|
+| `npm run dev` | Dev cu Electron + Vite |
+| `npm run build:app` | Build local + instalator |
+| `npm run test` | Teste (Vitest) |
+| `npm run lint` | Oxlint |
+
+## Licență
+
+Proprietate Manacat. Cod sursă public pentru transparență; utilizarea aplicației este rezervată echipei autorizate.

@@ -35,10 +35,10 @@ export function PostDraftThumbnail({
         title={label}
         aria-label={label}
         aria-current={isActive ? "true" : undefined}
-        className={`block overflow-hidden rounded-xl transition ${
+        className={`card block overflow-hidden border transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 ${
           isActive
-            ? "ring-2 ring-orange-500 ring-offset-2 ring-offset-white/80 shadow-md shadow-orange-200/60"
-            : "ring-1 ring-orange-100 opacity-80 hover:opacity-100 hover:ring-orange-300"
+            ? "scale-[1.02] border-primary shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2 ring-offset-base-100"
+            : "border-base-300/80 opacity-85 hover:scale-[1.03] hover:border-primary/50 hover:opacity-100 hover:shadow-md hover:shadow-base-content/10"
         }`}
         style={{ width: thumbWidth, height: THUMB_HEIGHT }}
       >
@@ -57,7 +57,7 @@ export function PostDraftThumbnail({
             event.stopPropagation();
             onRemove();
           }}
-          className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-rose-200 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600"
+          className="btn btn-error btn-circle absolute -right-0.5 -top-0.5 z-10 h-5 min-h-0 w-5 p-0 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
           aria-label={`Șterge ${label}`}
         >
           <X size={12} strokeWidth={2.5} />

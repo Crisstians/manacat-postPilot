@@ -1,4 +1,3 @@
-import { Spinner } from "flowbite-react";
 import { useEffect, useState } from "react";
 import type { TemplateAsset } from "../../shared/types";
 import { getTemplateIdFromPath, resolveTemplateImageSource } from "../templateImageSource";
@@ -78,20 +77,24 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <Spinner size="sm" />
+      <div className="flex items-center gap-2 text-sm text-base-content/60">
+        <span className="loading loading-spinner loading-sm text-primary" />
         Incarcare template-uri...
       </div>
     );
   }
 
   if (error) {
-    return <p className="text-sm text-rose-600">{error}</p>;
+    return (
+      <div className="alert alert-soft alert-error py-2 text-sm" role="alert">
+        {error}
+      </div>
+    );
   }
 
   if (templates.length === 0) {
     return (
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-base-content/60">
         Nu exista template-uri in <code>assets/templatesPostari</code>.
       </p>
     );
@@ -106,13 +109,13 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
             key={template.id}
             type="button"
             onClick={() => onSelect(template.path)}
-            className={`overflow-hidden rounded-xl border-2 text-left transition ${
+            className={`card overflow-hidden border text-left transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
               isSelected
-                ? "border-orange-500 ring-2 ring-orange-200"
-                : "border-orange-100 hover:border-orange-300"
+                ? "scale-[1.02] border-primary shadow-md shadow-primary/15 ring-2 ring-primary/30"
+                : "border-base-300/80 hover:scale-[1.02] hover:border-primary/50 hover:shadow-md hover:shadow-base-content/10"
             }`}
           >
-            <div className="aspect-square w-full bg-slate-100">
+            <div className="aspect-square w-full bg-base-200">
               <img
                 src={resolveTemplatePreviewSrc(template.path)}
                 alt={template.name}
@@ -121,7 +124,7 @@ export function TemplatePicker({ selectedPath, onSelect }: TemplatePickerProps) 
                 className="h-full w-full object-cover"
               />
             </div>
-            <p className="truncate px-2 py-1.5 text-xs font-medium text-slate-700">{template.name}</p>
+            <p className="truncate px-2 py-1.5 text-xs font-medium text-base-content/80">{template.name}</p>
           </button>
         );
       })}

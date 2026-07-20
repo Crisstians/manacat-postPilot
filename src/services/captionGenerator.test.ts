@@ -6,6 +6,7 @@ describe("generateCaption", () => {
     const result = generateCaption({
       productName: "Marfil Bianco",
       category: "gresie",
+      subtitle: "Placă ceramică\nPremium",
       price: 49.99,
       unit: "m²",
       features: ["Sculptat", "Rectificat"],
@@ -26,6 +27,7 @@ describe("generateCaption", () => {
       {
         productName: "Greco",
         category: "gresie",
+        subtitle: "Placă ceramică\nPremium",
         price: 60.99,
         unit: "m²",
         features: [],
@@ -37,6 +39,7 @@ describe("generateCaption", () => {
       {
         productName: "Alba",
         category: "faianta",
+        subtitle: "Faianță\nPremium",
         price: 45.5,
         unit: "m²",
         features: [],

@@ -7,6 +7,7 @@ export const PRODUCT_FIELD_LIMITS = {
   featureItem: 28,
   sizeDimension: 4,
   priceMax: 999_999.99,
+  subtitle: 48,
 } as const;
 
 export const clampText = (value: string, maxLength: number): string =>

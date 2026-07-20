@@ -1,20 +1,35 @@
-import { Alert, Spinner } from "flowbite-react";
-import { ImagePlus, LayoutTemplate, LogOut, Share2, WandSparkles } from "lucide-react";
+import { Download, ImagePlus, LayoutTemplate, Share2, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import logo from "../../assets/logo.png";
 import { generateBulkCaption, generateCaption } from "../../services/captionGenerator";
 import { publishBulkPost, publishPost } from "../../services/postsApi";
-import { createPostDraft } from "../../shared/bulkPosts";
+import { createPostDraft, duplicatePostDraft } from "../../shared/bulkPosts";
+import { createEmptyWorkSession } from "../../shared/draftStorage";
 import { defaultTemplate } from "../../shared/defaults";
+import {
+  countProductRequiredMissing,
+  FIELD_NAVIGATION,
+  getMissingExportLabels,
+  getProductPanelIncomplete,
+  getTemplatePanelIncomplete,
+  isExportReady,
+} from "../../shared/exportReadiness";
 import { revokeBlobUrl } from "../../shared/productImage";
 import type { LayerRect, PostDraft, ProductInput, TemplateLayout, UpdateStatus } from "../../shared/types";
 import { MAX_BULK_POSTS } from "../../shared/types";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { savePngInBrowser } from "../services/browserExport";
+import {
+  isDraftStorageQuotaError,
+  loadWorkSession,
+  saveWorkSession,
+} from "../services/draftPersistence";
 import { buildPostRenderRequest, renderAllDraftImages, renderPostImageBlob } from "../services/postImage";
-import { removeProductBackground } from "../services/removeProductBackground";
+import { ActionLoadingOverlay, type ActionLoadingState } from "./ActionLoadingOverlay";
+import { AppHeader } from "./AppHeader";
 import { BulkSlideNavigator } from "./BulkSlideNavigator";
 import { CanvasPreview } from "./CanvasPreview";
+import { CaptionEditor } from "./CaptionEditor";
 import type { PostCanvasHandle } from "./konva/PostCanvas";
 import { ProductForm } from "./ProductForm";
 import { TemplateControls } from "./TemplateControls";
@@ -56,23 +71,34 @@ const getUpdateBannerMessage = (status: UpdateStatus): string | null => {
 const isUpdateBannerLoading = (status: UpdateStatus): boolean =>
   status.phase === "checking" || status.phase === "downloading" || status.phase === "available";
 
-export function MainApp() {
+interface MainAppProps {
+  onBack: () => void;
+}
+
+export function MainApp({ onBack }: MainAppProps) {
   const { user, logout, accessToken } = useAuth();
-  const [drafts, setDrafts] = useState<PostDraft[]>(() => [createPostDraft(firstBundledTemplatePath)]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [bulkCaption, setBulkCaption] = useState("");
-  const [bulkCaptionTouched, setBulkCaptionTouched] = useState(false);
+  const { showSuccess, showError } = useToast();
+  const [{ session: initialSession, restored: sessionRestored }] = useState(() =>
+    user?.id
+      ? loadWorkSession(user.id, firstBundledTemplatePath)
+      : { session: createEmptyWorkSession(firstBundledTemplatePath), restored: false },
+  );
+  const [drafts, setDrafts] = useState<PostDraft[]>(initialSession.drafts);
+  const [activeIndex, setActiveIndex] = useState(initialSession.activeIndex);
+  const [bulkCaption, setBulkCaption] = useState(initialSession.bulkCaption);
+  const [bulkCaptionTouched, setBulkCaptionTouched] = useState(initialSession.bulkCaptionTouched);
   const [busy, setBusy] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [actionLoading, setActionLoading] = useState<ActionLoadingState | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
-  const [message, setMessage] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const [activePanel, setActivePanel] = useState<"product" | "template">("product");
-  const [backgroundRemovalBusy, setBackgroundRemovalBusy] = useState(false);
-  const [backgroundRemovalProgress, setBackgroundRemovalProgress] = useState(0);
-  const [backgroundRemovalLabel, setBackgroundRemovalLabel] = useState("");
+  const [activePanel, setActivePanel] = useState<"product" | "template">(initialSession.activePanel);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [showFieldHints, setShowFieldHints] = useState(false);
   const previewRef = useRef<PostCanvasHandle>(null);
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const skipAutoSaveRef = useRef(true);
+  const restoreToastShownRef = useRef(false);
+  const quotaErrorShownRef = useRef(false);
 
   const activeDraft = drafts[activeIndex] ?? drafts[0]!;
   const product = activeDraft.product;
@@ -80,6 +106,14 @@ export function MainApp() {
   const isBulkMode = drafts.length > 1;
 
   const validationErrors = useMemo(() => validate(product, template), [product, template]);
+  const exportReady = useMemo(() => isExportReady(product, template), [product, template]);
+  const missingForExport = useMemo(
+    () => getMissingExportLabels(product, template),
+    [product, template],
+  );
+  const productPanelIncomplete = useMemo(() => getProductPanelIncomplete(product), [product]);
+  const templatePanelIncomplete = useMemo(() => getTemplatePanelIncomplete(template), [template]);
+  const productMissingCount = useMemo(() => countProductRequiredMissing(product), [product]);
   const allDraftErrors = useMemo(
     () =>
       drafts.flatMap((draft, index) =>
@@ -92,6 +126,58 @@ export function MainApp() {
     () => generateBulkCaption(drafts.map((draft) => draft.product)),
     [drafts],
   );
+
+  const suggestedCaption = useMemo(() => generateCaption(product), [product]);
+
+  useEffect(() => {
+    if (exportReady) setShowFieldHints(false);
+  }, [exportReady]);
+
+  useEffect(() => {
+    if (!sessionRestored || restoreToastShownRef.current) return;
+    restoreToastShownRef.current = true;
+    showSuccess("Draft restaurat automat.");
+  }, [sessionRestored, showSuccess]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (skipAutoSaveRef.current) {
+      skipAutoSaveRef.current = false;
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void saveWorkSession(
+        user.id,
+        {
+          drafts,
+          activeIndex,
+          activePanel,
+          bulkCaption,
+          bulkCaptionTouched,
+        },
+        firstBundledTemplatePath,
+      ).catch((error) => {
+        if (isDraftStorageQuotaError(error) && !quotaErrorShownRef.current) {
+          quotaErrorShownRef.current = true;
+          showError("Draft-ul nu a putut fi salvat: spațiul local este plin.");
+        }
+      });
+    }, 600);
+
+    return () => window.clearTimeout(timeout);
+  }, [user?.id, drafts, activeIndex, activePanel, bulkCaption, bulkCaptionTouched, showError]);
+
+  useEffect(() => {
+    setDrafts((current) =>
+      current.map((draft, index) => {
+        if (index !== activeIndex || draft.facebookCaptionTouched) return draft;
+        const nextCaption = generateCaption(draft.product);
+        if (draft.facebookCaption === nextCaption) return draft;
+        return { ...draft, facebookCaption: nextCaption };
+      }),
+    );
+  }, [activeIndex, suggestedCaption, product]);
 
   useEffect(() => {
     const backgroundImagePath = firstBundledTemplatePath;
@@ -126,6 +212,44 @@ export function MainApp() {
       setUpdateStatus(status);
     });
     return () => unsubscribe?.();
+  }, []);
+
+  const focusField = useCallback((fieldKey: string) => {
+    const target = FIELD_NAVIGATION[fieldKey];
+    if (!target) return;
+
+    setActivePanel(target.panel);
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        const element = document.getElementById(target.elementId);
+        const scrollContainer = sidebarScrollRef.current;
+        if (element && scrollContainer) {
+          const containerTop = scrollContainer.getBoundingClientRect().top;
+          const elementTop = element.getBoundingClientRect().top;
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollTop + (elementTop - containerTop) - 24,
+            behavior: "smooth",
+          });
+        } else {
+          element?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        if (element instanceof HTMLElement) {
+          element.classList.add("field-highlight");
+          window.setTimeout(() => element.classList.remove("field-highlight"), 1200);
+        }
+
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement ||
+          element instanceof HTMLButtonElement
+        ) {
+          element.focus({ preventScroll: true });
+        } else {
+          element?.querySelector<HTMLElement>("input, textarea, button")?.focus({ preventScroll: true });
+        }
+      }, 50);
+    });
   }, []);
 
   const setProduct = useCallback(
@@ -191,69 +315,48 @@ export function MainApp() {
     input.click();
   };
 
-  const onRemoveBackground = async () => {
-    if (!product.productImagePath || product.productImageProcessedPath) return;
-
-    setBackgroundRemovalBusy(true);
-    setBackgroundRemovalProgress(0);
-    setBackgroundRemovalLabel("Pregatire model...");
-    setError("");
-
-    try {
-      const processedPath = await removeProductBackground(product.productImagePath, (progress) => {
-        setBackgroundRemovalProgress(progress.percent);
-        setBackgroundRemovalLabel(progress.label);
-      });
-
-      setProduct((previous) => {
-        revokeBlobUrl(previous.productImageProcessedPath);
-        return {
-          ...previous,
-          productImageProcessedPath: processedPath,
-          productImageLayout: undefined,
-        };
-      });
-      setMessage("Fundal eliminat. Poti ajusta pozitia pozei in preview.");
-    } catch (removalError) {
-      setError(
-        removalError instanceof Error
-          ? removalError.message
-          : "Nu s-a putut elimina fundalul imaginii.",
-      );
-    } finally {
-      setBackgroundRemovalBusy(false);
-      setBackgroundRemovalLabel("");
-    }
+  const onProductImageFile = (file: File) => {
+    const url = URL.createObjectURL(file);
+    setProduct((previous) => resetProductImageState(previous, url));
   };
 
-  const onRevertBackground = () => {
-    setProduct((previous) => {
-      if (!previous.productImageProcessedPath) return previous;
-      revokeBlobUrl(previous.productImageProcessedPath);
-      return {
-        ...previous,
-        productImageProcessedPath: undefined,
-        productImageLayout: undefined,
-      };
-    });
-    setMessage("");
+  const onRemoveProductImage = () => {
+    setProduct((previous) => resetProductImageState(previous, ""));
   };
 
   const onProductImageLayoutChange = (layout: LayerRect) => {
     setProduct((previous) => ({ ...previous, productImageLayout: layout }));
   };
 
+  const onDuplicateDraft = () => {
+    if (drafts.length >= MAX_BULK_POSTS) {
+      showError(`Poți adăuga maxim ${MAX_BULK_POSTS} postări într-un lot.`);
+      return;
+    }
+
+    const source = drafts[activeIndex];
+    if (!source) return;
+
+    const copy = duplicatePostDraft(source);
+    setDrafts((current) => {
+      const next = [...current];
+      next.splice(activeIndex + 1, 0, copy);
+      return next;
+    });
+    setActiveIndex(activeIndex + 1);
+    showSuccess("Postare duplicată.");
+  };
+
   const onAddDraft = () => {
     if (drafts.length >= MAX_BULK_POSTS) {
-      setError(`Poti adauga maxim ${MAX_BULK_POSTS} postari intr-un lot.`);
+      showError(`Poți adăuga maxim ${MAX_BULK_POSTS} postări într-un lot.`);
       return;
     }
 
     const backgroundImagePath = template.backgroundImagePath || firstBundledTemplatePath;
     setDrafts((current) => [...current, createPostDraft(backgroundImagePath)]);
     setActiveIndex(drafts.length);
-    setError("");
-    setMessage("Postare noua adaugata in lot.");
+    showSuccess("Postare nouă adăugată în lot.");
   };
 
   const onRemoveDraft = (index: number) => {
@@ -268,7 +371,46 @@ export function MainApp() {
     const nextDrafts = drafts.filter((_, draftIndex) => draftIndex !== index);
     setDrafts(nextDrafts);
     setActiveIndex((current) => Math.min(current, nextDrafts.length - 1));
-    setMessage("Postarea a fost scoasa din lot.");
+    showSuccess("Postarea a fost scoasă din lot.");
+  };
+
+  const copyCaptionToClipboard = async (text: string) => {
+    const caption = text.trim();
+    if (!caption) {
+      showError("Caption-ul este gol.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(caption);
+      showSuccess("Caption copiat în clipboard.");
+    } catch {
+      showError("Nu s-a putut copia caption-ul.");
+    }
+  };
+
+  const setActiveDraftCaption = (caption: string, touched = true) => {
+    setDrafts((current) =>
+      current.map((draft, index) =>
+        index === activeIndex
+          ? { ...draft, facebookCaption: caption, facebookCaptionTouched: touched }
+          : draft,
+      ),
+    );
+  };
+
+  const resetActiveDraftCaption = () => {
+    setDrafts((current) =>
+      current.map((draft, index) =>
+        index === activeIndex
+          ? {
+              ...draft,
+              facebookCaption: generateCaption(draft.product),
+              facebookCaptionTouched: false,
+            }
+          : draft,
+      ),
+    );
   };
 
   const onLogout = async () => {
@@ -282,46 +424,88 @@ export function MainApp() {
 
   const onExport = async () => {
     if (validationErrors.length) {
-      setError(validationErrors.join(" "));
+      setShowFieldHints(true);
+      showError(validationErrors.join(" "));
       return;
     }
     setBusy(true);
-    setError("");
-    setMessage("");
+    setActionLoading({
+      variant: "export",
+      stepIndex: 0,
+      progress: 12,
+      detail: product.productName.trim() || "Postare curentă",
+    });
     try {
       if (window.manacatApi?.exportPost) {
+        setActionLoading({
+          variant: "export",
+          stepIndex: 1,
+          progress: 45,
+          detail: "Compunem straturile text și imagine...",
+        });
         const request = await buildPostRenderRequest(previewRef.current, product, template);
         if (!request) {
-          setError("Nu s-a putut genera overlay-ul text pentru export.");
+          showError("Nu s-a putut genera overlay-ul text pentru export.");
           return;
         }
 
+        setActionLoading({
+          variant: "export",
+          stepIndex: 2,
+          progress: 78,
+          detail: "Se salvează pe disc...",
+        });
         const result = await window.manacatApi.exportPost(request);
         if (!result.success) {
-          setError(result.error ?? "Export esuat.");
+          showError(result.error ?? "Export eșuat.");
           return;
         }
-        setMessage(`Imagine salvata: ${result.imagePath}`);
+        setActionLoading({
+          variant: "export",
+          stepIndex: 2,
+          progress: 100,
+          detail: "Export finalizat",
+        });
+        showSuccess(`Imagine salvată: ${result.imagePath}`);
         return;
       }
 
+      setActionLoading({
+        variant: "export",
+        stepIndex: 1,
+        progress: 45,
+        detail: "Generăm previzualizarea la rezoluție completă...",
+      });
       const fullImageDataUrl = await previewRef.current?.exportFullImage();
       if (!fullImageDataUrl) {
-        setError("Nu s-a putut genera imaginea pentru export.");
+        showError("Nu s-a putut genera imaginea pentru export.");
         return;
       }
 
+      setActionLoading({
+        variant: "export",
+        stepIndex: 2,
+        progress: 82,
+        detail: "Se descarcă fișierul PNG...",
+      });
       const result = await savePngInBrowser(fullImageDataUrl, product.productName);
       if (!result.success) {
-        setError(result.error ?? "Export esuat.");
+        showError(result.error ?? "Export eșuat.");
         return;
       }
-      setMessage(`Imagine salvata: ${result.fileName}`);
+      setActionLoading({
+        variant: "export",
+        stepIndex: 2,
+        progress: 100,
+        detail: "Export finalizat",
+      });
+      showSuccess(`Imagine salvată: ${result.fileName}`);
     } catch (exportError) {
-      setError(
-        exportError instanceof Error ? exportError.message : "Export esuat (eroare necunoscuta).",
+      showError(
+        exportError instanceof Error ? exportError.message : "Export eșuat (eroare necunoscută).",
       );
     } finally {
+      setActionLoading(null);
       setBusy(false);
     }
   };
@@ -329,137 +513,199 @@ export function MainApp() {
   const onPublishToFacebook = async () => {
     const errorsToCheck = isBulkMode ? allDraftErrors : validationErrors;
     if (errorsToCheck.length) {
-      setError(errorsToCheck.join(" "));
+      setShowFieldHints(true);
+      showError(errorsToCheck.join(" "));
       return;
     }
     if (!accessToken) {
-      setError("Sesiunea a expirat. Autentifică-te din nou.");
+      showError("Sesiunea a expirat. Autentifică-te din nou.");
       return;
     }
 
     setPublishBusy(true);
-    setError("");
-    setMessage("");
+    setActionLoading({
+      variant: "publish",
+      stepIndex: 0,
+      progress: 8,
+      detail: isBulkMode ? `0 / ${drafts.length} postări` : product.productName.trim() || "Postare curentă",
+    });
 
     try {
       if (isBulkMode) {
-        const images = await renderAllDraftImages(drafts, previewRef.current, setActiveIndex);
+        const images = await renderAllDraftImages(
+          drafts,
+          previewRef.current,
+          setActiveIndex,
+          (current, total) => {
+            setActionLoading({
+              variant: "publish",
+              stepIndex: 0,
+              progress: 10 + (current / total) * 52,
+              detail: `Postare ${current} din ${total}`,
+            });
+          },
+        );
         const caption = bulkCaption.trim() || suggestedBulkCaption;
         if (!caption.trim()) {
-          setError("Caption-ul pentru lot este obligatoriu.");
+          showError("Caption-ul pentru lot este obligatoriu.");
           return;
         }
 
+        setActionLoading({
+          variant: "publish",
+          stepIndex: 1,
+          progress: 68,
+          detail: `${images.length} imagini pregătite`,
+        });
+        setActionLoading({
+          variant: "publish",
+          stepIndex: 2,
+          progress: 86,
+          detail: "Se încarcă lotul pe Facebook...",
+        });
         const result = await publishBulkPost(accessToken, images, caption);
-        setMessage(
+        setActionLoading({
+          variant: "publish",
+          stepIndex: 2,
+          progress: 100,
+          detail: "Lot publicat cu succes",
+        });
+        showSuccess(
           `Lot publicat pe Facebook cu ${images.length} imagini (ID: ${result.facebookPostId}).`,
         );
         return;
       }
 
+      setActionLoading({
+        variant: "publish",
+        stepIndex: 0,
+        progress: 35,
+        detail: "Compunem imaginea finală...",
+      });
       const image = await renderPostImageBlob(previewRef.current, product, template);
       if (!image) {
-        setError("Nu s-a putut genera imaginea pentru publicare.");
+        showError("Nu s-a putut genera imaginea pentru publicare.");
         return;
       }
 
-      const caption = generateCaption(product);
+      setActionLoading({
+        variant: "publish",
+        stepIndex: 1,
+        progress: 62,
+        detail: "Caption pregătit pentru Facebook",
+      });
+      const caption = activeDraft.facebookCaption.trim() || suggestedCaption;
+      setActionLoading({
+        variant: "publish",
+        stepIndex: 2,
+        progress: 84,
+        detail: "Se încarcă pe Facebook...",
+      });
       const result = await publishPost(accessToken, image, caption);
-      setMessage(`Postare publicată pe Facebook (ID: ${result.facebookPostId}).`);
+      setActionLoading({
+        variant: "publish",
+        stepIndex: 2,
+        progress: 100,
+        detail: "Postare publicată cu succes",
+      });
+      showSuccess(`Postare publicată pe Facebook (ID: ${result.facebookPostId}).`);
     } catch (publishError) {
-      setError(
+      showError(
         publishError instanceof Error
           ? publishError.message
           : "Publicarea pe Facebook a eșuat.",
       );
     } finally {
+      setActionLoading(null);
       setPublishBusy(false);
     }
   };
 
   const actionBusy = busy || publishBusy;
+  const canActOnCurrentPost = exportReady;
+  const canPublishBulk = isBulkMode ? allDraftErrors.length === 0 : exportReady;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        if (!actionBusy && canActOnCurrentPost) {
+          void onExport();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [actionBusy, canActOnCurrentPost, onExport]);
 
   return (
-    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_#ffedd5,_#fff7ed_40%,_#fffaf5_75%)] text-slate-900">
+    <main className="h-screen overflow-hidden bg-base-200 text-base-content">
+      <ActionLoadingOverlay state={actionLoading} />
       <div className="flex h-full flex-col">
-        <header className="h-20 border-b border-white/10 bg-gradient-to-r from-black via-zinc-900 to-neutral-800 shadow-lg shadow-black/30">
-          <div className="flex h-full items-center justify-between gap-3 pl-0 pr-5">
-            <div className="flex h-full items-center gap-3">
-              <img src={logo} alt="Logo Manacat" className="h-full w-auto rounded-lg object-contain" />
-              <h1 className="text-2xl font-bold text-white">PostPilot</h1>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {user ? (
-                <span className="hidden text-sm text-white/80 sm:inline">{user.name}</span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void onLogout()}
-                disabled={logoutBusy}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {logoutBusy ? <Spinner size="sm" /> : <LogOut size={16} />}
-                Deconectare
-              </button>
-            </div>
-          </div>
-        </header>
+        <AppHeader
+          onBack={onBack}
+          subtitle="Promovare produs"
+          onLogout={onLogout}
+          logoutBusy={logoutBusy}
+        />
 
         {updateBannerMessage ? (
-          <div className="flex items-center justify-center gap-2 border-b border-orange-200 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-800">
-            {updateBannerLoading ? <Spinner size="sm" color="warning" /> : null}
+          <div className="alert alert-soft alert-warning flex items-center justify-center gap-2 rounded-none border-b border-warning/30 py-2 text-sm font-medium">
+            {updateBannerLoading ? (
+              <span className="loading loading-spinner loading-xs text-warning" />
+            ) : null}
             <span>{updateBannerMessage}</span>
           </div>
         ) : null}
 
         <div className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 gap-4 p-4 xl:grid-cols-12 xl:p-5">
           <section className="flex min-h-0 flex-col xl:col-span-4">
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-xl shadow-orange-200/50 backdrop-blur">
-              <div className="shrink-0 p-4 pb-0">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-orange-700">
-                  <WandSparkles size={16} />
+            <div className="app-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="shrink-0 border-b border-base-300/60 p-4 pb-3">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-base-content">
+                  <WandSparkles size={16} className="text-primary" />
                   {isBulkMode ? "Lot postări" : "Postează un produs"}
                 </div>
-                <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl border border-orange-100 bg-orange-50/70 p-1">
+                <div className="surface-muted grid grid-cols-2 gap-1.5 rounded-xl border border-base-300/60 p-1">
                   <button
                     type="button"
                     onClick={() => setActivePanel("product")}
-                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold transition ${
-                      activePanel === "product"
-                        ? "bg-white text-orange-700 shadow-sm"
-                        : "text-slate-600 hover:bg-white/60"
-                    }`}
+                    className={`panel-tab ${activePanel === "product" ? "panel-tab-active" : "panel-tab-idle"}`}
                   >
                     <ImagePlus size={14} />
                     Date produs
+                    {productPanelIncomplete ? (
+                      <span className="badge badge-xs badge-soft badge-warning min-h-0 px-1.5 py-0">
+                        {productMissingCount}
+                      </span>
+                    ) : null}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActivePanel("template")}
-                    className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold transition ${
-                      activePanel === "template"
-                        ? "bg-white text-orange-700 shadow-sm"
-                        : "text-slate-600 hover:bg-white/60"
-                    }`}
+                    className={`panel-tab ${activePanel === "template" ? "panel-tab-active" : "panel-tab-idle"}`}
                   >
                     <LayoutTemplate size={14} />
                     Șabloane
+                    {templatePanelIncomplete ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-label="Fundal lipsă" />
+                    ) : null}
                   </button>
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-0">
+              <div ref={sidebarScrollRef} className="app-scroll min-h-0 flex-1 overflow-y-auto p-4">
                 <div className={activePanel === "product" ? "block" : "hidden"}>
                   <ProductForm
                     product={product}
+                    template={template}
                     onChange={setProduct}
+                    onNavigateField={focusField}
                     onPickProductImage={onPickProductImage}
-                    onRemoveBackground={onRemoveBackground}
-                    onRevertBackground={onRevertBackground}
-                    backgroundRemovalBusy={backgroundRemovalBusy}
-                    backgroundRemovalProgress={backgroundRemovalProgress}
-                    backgroundRemovalLabel={backgroundRemovalLabel}
+                    onProductImageFile={onProductImageFile}
+                    onRemoveProductImage={onRemoveProductImage}
+                    showFieldHints={showFieldHints}
                   />
                 </div>
                 <div className={activePanel === "template" ? "block" : "hidden"}>
@@ -467,37 +713,57 @@ export function MainApp() {
                 </div>
 
                 {isBulkMode ? (
-                  <div className="mt-4 space-y-2">
-                    <label
-                      htmlFor="bulk-caption"
-                      className="block text-xs font-semibold uppercase tracking-wide text-orange-700"
-                    >
-                      Caption lot Facebook
-                    </label>
-                    <textarea
+                  <div className="mt-4">
+                    <CaptionEditor
                       id="bulk-caption"
-                      rows={6}
+                      label="Caption lot Facebook"
                       value={bulkCaption}
-                      onChange={(event) => {
+                      suggestedCaption={suggestedBulkCaption}
+                      touched={bulkCaptionTouched}
+                      onChange={(next) => {
                         setBulkCaptionTouched(true);
-                        setBulkCaption(event.target.value);
+                        setBulkCaption(next);
                       }}
-                      className="w-full rounded-xl border border-orange-100 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-orange-200 focus:border-orange-300 focus:ring-2"
+                      onReset={() => {
+                        setBulkCaptionTouched(false);
+                        setBulkCaption(suggestedBulkCaption);
+                      }}
+                      onCopy={() => void copyCaptionToClipboard(bulkCaption.trim() || suggestedBulkCaption)}
+                      rows={6}
+                      placeholder="Textul care va însoți toate postările din lot..."
                     />
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-4">
+                    <CaptionEditor
+                      id="facebook-caption"
+                      label="Caption Facebook"
+                      value={activeDraft.facebookCaption}
+                      suggestedCaption={suggestedCaption}
+                      touched={activeDraft.facebookCaptionTouched}
+                      onChange={(next) => setActiveDraftCaption(next, true)}
+                      onReset={resetActiveDraftCaption}
+                      onCopy={() =>
+                        void copyCaptionToClipboard(
+                          activeDraft.facebookCaption.trim() || suggestedCaption,
+                        )
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </section>
 
           <section className="flex min-h-0 flex-col xl:col-span-8">
             <div className="flex min-h-0 flex-1 flex-col gap-3">
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/80 p-3 shadow-xl shadow-orange-200/50 backdrop-blur">
+              <div className="app-panel flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                 <BulkSlideNavigator
                   drafts={drafts}
                   activeIndex={activeIndex}
                   onSelect={setActiveIndex}
                   onAdd={onAddDraft}
+                  onDuplicate={onDuplicateDraft}
                   onRemove={onRemoveDraft}
                 />
 
@@ -507,52 +773,78 @@ export function MainApp() {
                     product={product}
                     template={template}
                     onProductImageLayoutChange={onProductImageLayoutChange}
+                    onNavigateField={focusField}
                   />
                 </div>
-              </div>
 
-              <div className="shrink-0 rounded-2xl border border-orange-100 bg-white/75 p-4 shadow-lg shadow-orange-100/80 backdrop-blur">
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    className="inline-flex min-w-44 items-center justify-center rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-orange-300/60 transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-70"
-                    onClick={() => void onExport()}
-                    disabled={actionBusy}
-                  >
-                    {busy ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Spinner size="sm" />
-                        Export in progres...
+                <div className="mt-3 shrink-0 border-t border-base-300/60 pt-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm min-w-44"
+                      onClick={() => void onExport()}
+                      disabled={actionBusy || !canActOnCurrentPost}
+                      title={
+                        !canActOnCurrentPost
+                          ? `Completează: ${missingForExport.join(", ")}`
+                          : undefined
+                      }
+                    >
+                      {busy ? (
+                        <>
+                          <span className="loading loading-spinner loading-xs" />
+                          Export in progres...
+                        </>
+                      ) : (
+                        <>
+                          <Download size={16} />
+                          Export imagine
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-info btn-sm min-w-52"
+                      onClick={() => void onPublishToFacebook()}
+                      disabled={actionBusy || !canPublishBulk}
+                      title={
+                        !canPublishBulk && !isBulkMode
+                          ? `Completează: ${missingForExport.join(", ")}`
+                          : undefined
+                      }
+                    >
+                      {publishBusy ? (
+                        <>
+                          <span className="loading loading-spinner loading-xs" />
+                          Se publică...
+                        </>
+                      ) : (
+                        <>
+                          <Share2 size={16} />
+                          {isBulkMode
+                            ? `Publică toate (${drafts.length}) pe Facebook`
+                            : "Publică pe Facebook"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {!canActOnCurrentPost ? (
+                    <p className="helper-text mt-2 text-xs">
+                      Pentru export, completează:{" "}
+                      <span className="font-medium text-base-content/70">
+                        {missingForExport.join(", ")}
                       </span>
-                    ) : (
-                      "Export imagine"
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex min-w-52 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-300/50 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
-                    onClick={() => void onPublishToFacebook()}
-                    disabled={actionBusy}
-                  >
-                    {publishBusy ? (
-                      <>
-                        <Spinner size="sm" />
-                        Se publică...
-                      </>
-                    ) : (
-                      <>
-                        <Share2 size={16} />
-                        {isBulkMode
-                          ? `Publică toate (${drafts.length}) pe Facebook`
-                          : "Publică pe Facebook"}
-                      </>
-                    )}
-                  </button>
+                      {" · "}
+                      <span className="text-base-content/45">Ctrl+E când e gata</span>
+                    </p>
+                  ) : (
+                    <p className="helper-text mt-2 text-xs text-base-content/45">
+                      Scurtătură: <kbd className="kbd-shortcut">Ctrl</kbd> +{" "}
+                      <kbd className="kbd-shortcut">E</kbd>
+                    </p>
+                  )}
                 </div>
               </div>
-
-              {error && <Alert color="failure">{error}</Alert>}
-              {message && <Alert color="success">{message}</Alert>}
             </div>
           </section>
         </div>

@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } from "electron";
 import type { TemplateAsset } from "../src/shared/types.js";
 import { generateCaption } from "../src/services/captionGenerator.js";
 import { exportPostAssets, composePostPngBuffer } from "../src/services/imageComposer.js";
@@ -36,6 +36,61 @@ const LOCAL_IMAGE_MIME: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+
+const getTemplatesDir = (): string => {
+  if (!app.isPackaged) {
+    return path.join(app.getAppPath(), "src/assets/templatesPostari");
+  }
+  return path.join(process.resourcesPath, "templatesPostari");
+};
+
+const allowedLocalImagePaths = new Set<string>();
+
+const resolveLocalImagePath = (filePath: string): string => path.resolve(filePath);
+
+const registerAllowedLocalImage = (filePath: string): void => {
+  allowedLocalImagePaths.add(resolveLocalImagePath(filePath));
+};
+
+const getAllowedUserImageDirs = (): string[] => {
+  const home = app.getPath("home");
+  return ["Downloads", "Pictures", "Desktop", "Documents"].map((dirName) =>
+    resolveLocalImagePath(path.join(home, dirName)),
+  );
+};
+
+const canServeLocalImage = async (filePath: string): Promise<boolean> => {
+  const resolved = resolveLocalImagePath(filePath);
+  const extension = path.extname(resolved).toLowerCase();
+  if (!IMAGE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+
+  let stat;
+  try {
+    stat = await fs.stat(resolved);
+  } catch {
+    return false;
+  }
+  if (!stat.isFile()) {
+    return false;
+  }
+
+  const templatesDir = resolveLocalImagePath(getTemplatesDir());
+  if (resolved === templatesDir || resolved.startsWith(`${templatesDir}${path.sep}`)) {
+    return true;
+  }
+
+  if (allowedLocalImagePaths.has(resolved)) {
+    return true;
+  }
+
+  return getAllowedUserImageDirs().some(
+    (allowedDir) => resolved === allowedDir || resolved.startsWith(`${allowedDir}${path.sep}`),
+  );
+};
+
 const registerLocalFileProtocol = (): void => {
   protocol.handle("manacat", async (request) => {
     const prefix = "manacat://open/";
@@ -45,8 +100,14 @@ const registerLocalFileProtocol = (): void => {
 
     try {
       const filePath = decodeURIComponent(request.url.slice(prefix.length));
-      const data = await fs.readFile(filePath);
-      const mimeType = LOCAL_IMAGE_MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+      if (!(await canServeLocalImage(filePath))) {
+        return new Response("Forbidden", { status: 403 });
+      }
+
+      const resolvedPath = resolveLocalImagePath(filePath);
+      const data = await fs.readFile(resolvedPath);
+      const mimeType =
+        LOCAL_IMAGE_MIME[path.extname(resolvedPath).toLowerCase()] ?? "application/octet-stream";
 
       return new Response(data, {
         headers: {
@@ -77,12 +138,15 @@ const createWindow = async (): Promise<void> => {
     title: APP_NAME,
     width: 1440,
     height: 940,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+
+  Menu.setApplicationMenu(null);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -99,15 +163,6 @@ const createWindow = async (): Promise<void> => {
   } else {
     await mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
-};
-
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-
-const getTemplatesDir = (): string => {
-  if (!app.isPackaged) {
-    return path.join(app.getAppPath(), "src/assets/templatesPostari");
-  }
-  return path.join(process.resourcesPath, "templatesPostari");
 };
 
 const formatTemplateName = (filename: string): string => {
@@ -128,11 +183,15 @@ const listTemplates = async (): Promise<TemplateAsset[]> => {
   return entries
     .filter((entry) => IMAGE_EXTENSIONS.has(path.extname(entry).toLowerCase()))
     .sort((left, right) => left.localeCompare(right, "ro"))
-    .map((filename) => ({
-      id: path.parse(filename).name,
-      name: formatTemplateName(filename),
-      path: path.join(templatesDir, filename),
-    }));
+    .map((filename) => {
+      const templatePath = path.join(templatesDir, filename);
+      registerAllowedLocalImage(templatePath);
+      return {
+        id: path.parse(filename).name,
+        name: formatTemplateName(filename),
+        path: templatePath,
+      };
+    });
 };
 
 const pickImage = async (title: string): Promise<string | null> => {
@@ -144,7 +203,10 @@ const pickImage = async (title: string): Promise<string | null> => {
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
-  return result.filePaths[0];
+
+  const filePath = result.filePaths[0];
+  registerAllowedLocalImage(filePath);
+  return filePath;
 };
 
 ipcMain.handle("templates:list", async () => listTemplates());

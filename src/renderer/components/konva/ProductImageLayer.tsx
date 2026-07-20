@@ -97,6 +97,7 @@ export function ProductImageLayer({
         y={rect.y}
         width={rect.width}
         height={rect.height}
+        imageSmoothingEnabled
         draggable
         shadowEnabled={shadowEnabled}
         shadowColor="black"

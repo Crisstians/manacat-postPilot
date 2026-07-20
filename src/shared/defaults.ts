@@ -1,5 +1,6 @@
 import { unitForCategory } from "./categoryUnits.js";
 import type { ProductInput, TemplateLayout } from "./types.js";
+import { defaultSubtitleForCategory } from "./productSubtitle.js";
 
 const defaultCategory = "gresie" as const;
 
@@ -9,6 +10,7 @@ export const TEMPLATE_EXPORT_HEIGHT = 2463;
 export const defaultProduct: ProductInput = {
   productName: "",
   category: defaultCategory,
+  subtitle: defaultSubtitleForCategory(defaultCategory),
   price: 0,
   unit: unitForCategory(defaultCategory),
   features: [],

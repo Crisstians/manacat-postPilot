@@ -1,4 +1,3 @@
-import { Spinner } from "flowbite-react";
 import {
   createContext,
   useCallback,
@@ -121,11 +120,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status === "loading") {
     return (
-      <main className="flex h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,_#ffedd5,_#fff7ed_40%,_#fffaf5_75%)]">
-        <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/70 bg-white/80 px-10 py-8 shadow-xl shadow-orange-200/50 backdrop-blur">
+      <main className="flex h-screen items-center justify-center bg-base-200">
+        <div className="card card-border flex flex-col items-center gap-4 bg-base-100 px-10 py-8 shadow-sm shadow-base-content/5">
           <img src={logo} alt="Logo Manacat" className="h-16 w-auto object-contain" />
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-            <Spinner size="sm" color="warning" />
+          <div className="flex items-center gap-2 text-sm font-medium text-base-content/70">
+            <span className="loading loading-spinner loading-sm text-primary" />
             Se verifică sesiunea...
           </div>
         </div>

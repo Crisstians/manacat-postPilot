@@ -10,6 +10,7 @@ import type { ProductInput } from "./types.js";
 const baseProduct: ProductInput = {
   productName: "Test",
   category: "gresie",
+  subtitle: "Placă ceramică\nPremium",
   price: 10,
   unit: "m²",
   features: [],

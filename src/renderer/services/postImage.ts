@@ -86,6 +86,7 @@ export const renderAllDraftImages = async (
   drafts: PostDraft[],
   previewRef: PostCanvasHandle | null,
   setActiveIndex: (index: number) => void,
+  onProgress?: (current: number, total: number) => void,
 ): Promise<Blob[]> => {
   const images: Blob[] = [];
   const { flushSync } = await import("react-dom");
@@ -94,6 +95,7 @@ export const renderAllDraftImages = async (
     const draft = drafts[index]!;
     flushSync(() => setActiveIndex(index));
     await waitForPreviewPaint();
+    onProgress?.(index + 1, drafts.length);
     const blob = await renderPostImageBlob(previewRef, draft.product, draft.template);
     if (!blob) {
       throw new Error(`Nu s-a putut genera imaginea pentru postarea ${index + 1}.`);

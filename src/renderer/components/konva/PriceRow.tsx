@@ -130,6 +130,7 @@ export function PriceRow({ priceText, unitLabel, showM2Icon, priceBlock, unitBlo
           y={iconY}
           width={iconWidth}
           height={iconHeight}
+          imageSmoothingEnabled
           shadowColor="#000000"
           shadowBlur={12}
           shadowOpacity={0.85}
