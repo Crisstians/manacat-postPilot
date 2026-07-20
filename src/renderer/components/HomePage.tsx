@@ -1,6 +1,8 @@
 import { Sparkles } from "lucide-react";
-import { POST_TYPES, type PostTypeId } from "../../shared/postTypes";
+import { getPostTypeDefinition, type PostTypeId } from "../../shared/postTypes";
 import { AppHeader } from "./AppHeader";
+
+const VISIBLE_POST_TYPES: PostTypeId[] = ["product"];
 
 interface HomePageProps {
   onSelect: (postType: PostTypeId) => void;
@@ -27,8 +29,9 @@ export function HomePage({ onSelect, onLogout, logoutBusy = false }: HomePagePro
             </h2>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
-            {POST_TYPES.map((postType, index) => {
+          <div className="mx-auto grid max-w-lg gap-5">
+            {VISIBLE_POST_TYPES.map((postTypeId, index) => {
+              const postType = getPostTypeDefinition(postTypeId);
               const Icon = postType.icon;
               return (
                 <button
