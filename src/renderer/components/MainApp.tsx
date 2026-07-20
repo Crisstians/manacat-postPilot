@@ -14,7 +14,7 @@ import {
   isExportReady,
 } from "../../shared/exportReadiness";
 import { revokeBlobUrl } from "../../shared/productImage";
-import type { LayerRect, PostDraft, ProductInput, TemplateLayout, UpdateStatus } from "../../shared/types";
+import type { LayerRect, PostDraft, ProductInput, TemplateLayout } from "../../shared/types";
 import { MAX_BULK_POSTS } from "../../shared/types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -52,25 +52,6 @@ const validate = (product: ProductInput, template: TemplateLayout): string[] => 
   return errors;
 };
 
-const getUpdateBannerMessage = (status: UpdateStatus): string | null => {
-  switch (status.phase) {
-    case "checking":
-      return "Se verifică actualizări...";
-    case "available":
-      return `Actualizare disponibilă (v${status.version}). Se descarcă...`;
-    case "downloading":
-      return `Se descarcă actualizarea... ${status.percent}%`;
-    case "downloaded":
-      return `Actualizare descărcată (v${status.version}). Repornește aplicația pentru instalare.`;
-    case "not-available":
-    case "error":
-      return null;
-  }
-};
-
-const isUpdateBannerLoading = (status: UpdateStatus): boolean =>
-  status.phase === "checking" || status.phase === "downloading" || status.phase === "available";
-
 interface MainAppProps {
   onBack: () => void;
 }
@@ -92,7 +73,6 @@ export function MainApp({ onBack }: MainAppProps) {
   const [actionLoading, setActionLoading] = useState<ActionLoadingState | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [activePanel, setActivePanel] = useState<"product" | "template">(initialSession.activePanel);
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [showFieldHints, setShowFieldHints] = useState(false);
   const previewRef = useRef<PostCanvasHandle>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
@@ -207,13 +187,6 @@ export function MainApp({ onBack }: MainAppProps) {
     setBulkCaption(suggestedBulkCaption);
   }, [bulkCaptionTouched, isBulkMode, suggestedBulkCaption]);
 
-  useEffect(() => {
-    const unsubscribe = window.manacatApi?.onUpdateStatus?.((status) => {
-      setUpdateStatus(status);
-    });
-    return () => unsubscribe?.();
-  }, []);
-
   const focusField = useCallback((fieldKey: string) => {
     const target = FIELD_NAVIGATION[fieldKey];
     if (!target) return;
@@ -279,9 +252,6 @@ export function MainApp({ onBack }: MainAppProps) {
     },
     [activeIndex],
   );
-
-  const updateBannerMessage = updateStatus ? getUpdateBannerMessage(updateStatus) : null;
-  const updateBannerLoading = updateStatus ? isUpdateBannerLoading(updateStatus) : false;
 
   const resetProductImageState = (previous: ProductInput, productImagePath: string): ProductInput => {
     revokeBlobUrl(previous.productImagePath);
@@ -649,15 +619,6 @@ export function MainApp({ onBack }: MainAppProps) {
           onLogout={onLogout}
           logoutBusy={logoutBusy}
         />
-
-        {updateBannerMessage ? (
-          <div className="alert alert-soft alert-warning flex items-center justify-center gap-2 rounded-none border-b border-warning/30 py-2 text-sm font-medium">
-            {updateBannerLoading ? (
-              <span className="loading loading-spinner loading-xs text-warning" />
-            ) : null}
-            <span>{updateBannerMessage}</span>
-          </div>
-        ) : null}
 
         <div className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 gap-4 p-4 xl:grid-cols-12 xl:p-5">
           <section className="flex min-h-0 flex-col xl:col-span-4">

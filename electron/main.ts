@@ -271,8 +271,8 @@ ipcMain.handle("post:renderPng", async (_, payload: ExportRequest) => {
 app.whenReady().then(async () => {
   registerLocalFileProtocol();
   enableCrossOriginIsolation();
-  setupAutoUpdater();
   await createWindow();
+  setupAutoUpdater(() => mainWindow);
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       await createWindow();

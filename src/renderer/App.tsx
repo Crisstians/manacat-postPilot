@@ -5,6 +5,7 @@ import { AnnouncementEditorApp } from "./components/AnnouncementEditorApp";
 import { HomePage } from "./components/HomePage";
 import { LoginPage } from "./components/LoginPage";
 import { MainApp } from "./components/MainApp";
+import { UpdateNotifier } from "./components/UpdateNotifier";
 import type { PostTypeId } from "../shared/postTypes";
 
 async function loadFlyonUI() {
@@ -18,10 +19,6 @@ function AppContent() {
   const [screen, setScreen] = useState<AppScreen>({ view: "home" });
   const [logoutBusy, setLogoutBusy] = useState(false);
 
-  if (status === "unauthenticated") {
-    return <LoginPage />;
-  }
-
   const onLogout = async () => {
     setLogoutBusy(true);
     try {
@@ -32,25 +29,28 @@ function AppContent() {
     }
   };
 
-  if (screen.view === "home") {
-    return (
-      <HomePage
-        onSelect={(postType) => setScreen({ view: "editor", postType })}
-        onLogout={onLogout}
-        logoutBusy={logoutBusy}
-      />
-    );
-  }
-
-  if (screen.postType === "product") {
-    return <MainApp onBack={() => setScreen({ view: "home" })} />;
+  if (status === "unauthenticated") {
+    return <LoginPage />;
   }
 
   return (
-    <AnnouncementEditorApp
-      postType={screen.postType}
-      onBack={() => setScreen({ view: "home" })}
-    />
+    <>
+      <UpdateNotifier />
+      {screen.view === "home" ? (
+        <HomePage
+          onSelect={(postType) => setScreen({ view: "editor", postType })}
+          onLogout={onLogout}
+          logoutBusy={logoutBusy}
+        />
+      ) : screen.postType === "product" ? (
+        <MainApp onBack={() => setScreen({ view: "home" })} />
+      ) : (
+        <AnnouncementEditorApp
+          postType={screen.postType}
+          onBack={() => setScreen({ view: "home" })}
+        />
+      )}
+    </>
   );
 }
 

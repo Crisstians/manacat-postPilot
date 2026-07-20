@@ -2,7 +2,7 @@
   "name": "manacat-post",
   "productName": "Manacat PostPilot",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "repository": {
     "type": "git",
@@ -53,6 +53,7 @@
   "build": {
     "appId": "com.manacat.postpilot",
     "productName": "Manacat PostPilot",
+    "artifactName": "Manacat-PostPilot-Setup-${version}.${ext}",
     "publish": [
       {
         "provider": "github",

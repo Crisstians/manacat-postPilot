@@ -16,6 +16,11 @@ const api = {
   onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
     ipcRenderer.on("update:status", handler);
+    void ipcRenderer.invoke("update:getStatus").then((status: UpdateStatus | null) => {
+      if (status) {
+        callback(status);
+      }
+    });
     return () => ipcRenderer.removeListener("update:status", handler);
   },
 };
