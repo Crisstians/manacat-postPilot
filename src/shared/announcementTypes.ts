@@ -1,5 +1,6 @@
 import { defaultTemplate, TEMPLATE_EXPORT_HEIGHT, TEMPLATE_EXPORT_WIDTH } from "./defaults";
 import type { AnnouncementPostType } from "./postTypes";
+import { normalizeTemplateTextBlocks } from "./textBlockLayout";
 import type { TemplateLayout, TextBlock } from "./types";
 
 export interface ShopAnnouncementInput {
@@ -48,46 +49,77 @@ export const createDefaultAnnouncementContent = (
 ): ShopAnnouncementInput | HiringAnnouncementInput =>
   postType === "shop" ? defaultShopAnnouncement() : defaultHiringAnnouncement();
 
-const shopAnnouncementLayout = (blocks: TemplateLayout["textBlocks"]) => ({
+export type ShopAnnouncementLayout = {
+  title: TextBlock;
+  highlight: TextBlock;
+  body: TextBlock;
+  footer: TextBlock;
+};
+
+export type HiringAnnouncementLayout = {
+  title: TextBlock;
+  subtitle: TextBlock;
+  body: TextBlock;
+  footer: TextBlock;
+};
+
+const shopAnnouncementLayout = (blocks: TemplateLayout["textBlocks"]): ShopAnnouncementLayout => ({
   title: blocks.productName,
   highlight: blocks.subtitle,
   body: blocks.description,
-  footer: {
-    ...blocks.price,
-    y: 2050,
-    fontSize: 96,
-    maxWidth: 1200,
-    fitMode: "shrinkSingleLine" as const,
-  } satisfies TextBlock,
+  footer: blocks.price,
 });
 
-const hiringAnnouncementLayout = (blocks: TemplateLayout["textBlocks"]) => ({
+const hiringAnnouncementLayout = (blocks: TemplateLayout["textBlocks"]): HiringAnnouncementLayout => ({
   title: blocks.productName,
   subtitle: blocks.subtitle,
   body: blocks.description,
-  footer: {
-    ...blocks.feature,
-    y: 2180,
-    fontSize: 96,
-    maxWidth: 1100,
-    fitMode: "shrinkSingleLine" as const,
-  } satisfies TextBlock,
+  footer: blocks.feature,
 });
 
-export const getAnnouncementLayout = (postType: AnnouncementPostType) => {
-  const blocks = defaultTemplate.textBlocks;
-  return postType === "shop" ? shopAnnouncementLayout(blocks) : hiringAnnouncementLayout(blocks);
+export const getAnnouncementLayout = (
+  postType: AnnouncementPostType,
+  textBlocks: TemplateLayout["textBlocks"] = defaultTemplate.textBlocks,
+) =>
+  postType === "shop" ? shopAnnouncementLayout(textBlocks) : hiringAnnouncementLayout(textBlocks);
+
+export const createAnnouncementTemplate = (backgroundImagePath = ""): TemplateLayout => {
+  const base = defaultTemplate.textBlocks;
+  return {
+    id: `announcement-${TEMPLATE_EXPORT_WIDTH}x${TEMPLATE_EXPORT_HEIGHT}`,
+    name: `Anunț ${TEMPLATE_EXPORT_WIDTH}x${TEMPLATE_EXPORT_HEIGHT}`,
+    width: TEMPLATE_EXPORT_WIDTH,
+    height: TEMPLATE_EXPORT_HEIGHT,
+    backgroundImagePath,
+    productLayer: { ...defaultTemplate.productLayer },
+    textBlocks: normalizeTemplateTextBlocks({
+      ...base,
+      productName: { ...base.productName, fitMode: "boxFit" },
+      subtitle: { ...base.subtitle, fitMode: "boxFit" },
+      description: {
+        ...base.description,
+        fitMode: "boxFit",
+        height: Math.round(69 * 1.25 * 8),
+      },
+      price: {
+        ...base.price,
+        y: 2050,
+        fontSize: 96,
+        maxWidth: 1200,
+        height: Math.round(96 * 1.1),
+        fitMode: "boxFit",
+      },
+      feature: {
+        ...base.feature,
+        y: 2180,
+        fontSize: 96,
+        maxWidth: 1100,
+        height: Math.round(96 * 1.1),
+        fitMode: "boxFit",
+      },
+    }),
+  };
 };
-
-export const createAnnouncementTemplate = (backgroundImagePath = ""): TemplateLayout => ({
-  id: `announcement-${TEMPLATE_EXPORT_WIDTH}x${TEMPLATE_EXPORT_HEIGHT}`,
-  name: `Anunț ${TEMPLATE_EXPORT_WIDTH}x${TEMPLATE_EXPORT_HEIGHT}`,
-  width: TEMPLATE_EXPORT_WIDTH,
-  height: TEMPLATE_EXPORT_HEIGHT,
-  backgroundImagePath,
-  productLayer: { ...defaultTemplate.productLayer },
-  textBlocks: { ...defaultTemplate.textBlocks },
-});
 
 export const isShopAnnouncement = (
   draft: AnnouncementDraft,

@@ -1,19 +1,26 @@
 import Konva from "konva";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Image, Layer, Rect, Stage } from "react-konva";
 import {
   resolveProductImageRect,
   computeCoverRectBottomRight,
 } from "../../../services/layout";
+import { categoryShowsProductPlate, categoryUsesSize } from "../../../shared/categoryLayout";
 import { getDisplayProductImagePath } from "../../../shared/productImage";
 import { resolveProductImageSource } from "../../productImageSource";
 import { resolveTemplateImageSource } from "../../templateImageSource";
-import type { LayerRect, ProductInput, TemplateLayout } from "../../../shared/types";
-import { splitProductNameLines } from "../../../shared/productFieldLimits";
-import { getProductSubtitleLines } from "../../../shared/productSubtitle";
+import type {
+  LayerRect,
+  ProductInput,
+  TemplateLayout,
+  TemplateTextBlockId,
+  TextBlockGeometry,
+} from "../../../shared/types";
+import { defaultSubtitleForCategory } from "../../../shared/productSubtitle";
 import { isSquareMeterUnit, unitPriceSuffixText } from "../../../shared/unitDisplay";
 import { BottomRows } from "./BottomRows";
-import { FitText } from "./FitText";
+import { EditableTextBlock } from "./EditableTextBlock";
 import { PriceRow } from "./PriceRow";
 import { ProductImageLayer } from "./ProductImageLayer";
 import { EXPORT_PIXEL_RATIO } from "./textStyles";
@@ -30,7 +37,13 @@ interface PostCanvasProps {
   showProductPlaceholder?: boolean;
   previewScale?: number;
   onProductImageLayoutChange?: (layout: LayerRect) => void;
+  onTextBlockLayoutChange?: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
 }
+
+type CanvasSelection =
+  | { type: "product" }
+  | { type: "text"; id: TemplateTextBlockId }
+  | null;
 
 const getPreviewPixelRatio = (): number => {
   if (typeof window === "undefined") {
@@ -69,14 +82,19 @@ const resolveImageSrc = (path: string): string => resolveProductImageSource(path
 
 const resolveBackgroundSrc = (path: string): string => resolveTemplateImageSource(path);
 
-const isProductImageTarget = (target: Konva.Node): boolean => {
-  if (target.name() === "product-image") {
+const isInteractiveCanvasTarget = (target: Konva.Node): boolean => {
+  const name = target.name() ?? "";
+  if (name === "product-image" || name.startsWith("text-block-") || name.startsWith("text-hit-")) {
     return true;
   }
 
   let parent = target.getParent();
   while (parent) {
     if (parent.className === "Transformer") {
+      return true;
+    }
+    const parentName = parent.name() ?? "";
+    if (parentName === "product-image" || parentName.startsWith("text-block-")) {
       return true;
     }
     parent = parent.getParent();
@@ -92,12 +110,13 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     showProductPlaceholder = true,
     previewScale = 1,
     onProductImageLayoutChange,
+    onTextBlockLayoutChange,
   },
   ref,
 ) {
   const textLayerRef = useRef<Konva.Layer>(null);
   const stageRef = useRef<Konva.Stage>(null);
-  const [isProductSelected, setIsProductSelected] = useState(false);
+  const [selection, setSelection] = useState<CanvasSelection>(null);
   const backgroundSrc = template.backgroundImagePath
     ? resolveBackgroundSrc(template.backgroundImagePath)
     : undefined;
@@ -107,6 +126,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   const backgroundImage = useKonvaImageFromSrc(backgroundSrc);
   const productImage = useKonvaImage(productSrc);
   const interactiveProductImage = Boolean(productImage && onProductImageLayoutChange);
+  const interactiveText = Boolean(onTextBlockLayoutChange);
 
   const productRect = useMemo(() => {
     if (!productImage) {
@@ -134,12 +154,14 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   }, [backgroundImage, template.height, template.width]);
 
   useEffect(() => {
-    setIsProductSelected(false);
+    setSelection(null);
   }, [product.productImagePath]);
 
-  const subtitleLines = getProductSubtitleLines(product);
-  const productNameLines = splitProductNameLines(product.productName || "Nume produs");
+  const subtitleText =
+    product.subtitle.trim() || defaultSubtitleForCategory(product.category);
   const featureText = product.features[0] ?? "-";
+  const showSize = categoryUsesSize(product.category);
+  const showProductPlate = categoryShowsProductPlate(product.category);
   const priceText = Number.isFinite(product.price) ? product.price.toFixed(2) : "0.00";
   const originalPriceText =
     product.hasDiscount && Number.isFinite(product.originalPrice)
@@ -160,9 +182,12 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     stage.batchDraw();
   }, [previewScale]);
 
+  const clearSelection = () => setSelection(null);
+
   useImperativeHandle(ref, () => ({
     async exportTextOverlay() {
       await document.fonts.ready;
+      flushSync(() => clearSelection());
       const stage = stageRef.current;
       const layer = textLayerRef.current;
       if (!stage || !layer) {
@@ -184,7 +209,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     },
     async exportFullImage() {
       await document.fonts.ready;
-      setIsProductSelected(false);
+      flushSync(() => clearSelection());
 
       const stage = stageRef.current;
       if (!stage) {
@@ -212,9 +237,17 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   }));
 
   const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (!interactiveProductImage) return;
-    if (isProductImageTarget(event.target)) return;
-    setIsProductSelected(false);
+    if (!interactiveProductImage && !interactiveText) return;
+    if (isInteractiveCanvasTarget(event.target)) return;
+    clearSelection();
+  };
+
+  const selectText = (id: TemplateTextBlockId) => setSelection({ type: "text", id });
+  const isTextSelected = (id: TemplateTextBlockId) =>
+    selection?.type === "text" && selection.id === id;
+
+  const onTextGeometry = (blockId: TemplateTextBlockId) => (geometry: TextBlockGeometry) => {
+    onTextBlockLayoutChange?.(blockId, geometry);
   };
 
   return (
@@ -240,7 +273,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
           />
         ) : null}
 
-        {showProductPlaceholder ? (
+        {showProductPlaceholder && showProductPlate ? (
           <Rect
             name="product-placeholder"
             x={template.productLayer.x}
@@ -271,44 +304,46 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
           <ProductImageLayer
             image={productImage}
             rect={productRect}
-            selected={isProductSelected}
+            selected={selection?.type === "product"}
             shadowEnabled={shadowEnabled}
             canvasWidth={template.width}
             canvasHeight={template.height}
-            onSelect={() => setIsProductSelected(true)}
+            onSelect={() => setSelection({ type: "product" })}
             onLayoutChange={onProductImageLayoutChange!}
           />
         </Layer>
       ) : null}
 
       <Layer ref={textLayerRef}>
-        {productNameLines.map((line, index) => {
-          const block = template.textBlocks.productName;
-          const lineY = block.y + index * block.fontSize * block.lineHeight;
-          return (
-            <FitText
-              key={`productName-${index}`}
-              block={block}
-              text={line}
-              y={lineY}
-            />
-          );
-        })}
-        {subtitleLines.map((line, index) => {
-          const block = template.textBlocks.subtitle;
-          const lineY = block.y + index * block.fontSize * block.lineHeight;
-          return (
-            <FitText
-              key={`subtitle-${index}`}
-              block={block}
-              text={line}
-              y={lineY}
-            />
-          );
-        })}
-        <FitText
+        <EditableTextBlock
+          block={template.textBlocks.productName}
+          text={product.productName || "Nume produs"}
+          selected={isTextSelected("productName")}
+          interactive={interactiveText}
+          canvasWidth={template.width}
+          canvasHeight={template.height}
+          onSelect={() => selectText("productName")}
+          onLayoutChange={onTextGeometry("productName")}
+        />
+        <EditableTextBlock
+          block={template.textBlocks.subtitle}
+          text={subtitleText}
+          selected={isTextSelected("subtitle")}
+          interactive={interactiveText}
+          canvasWidth={template.width}
+          canvasHeight={template.height}
+          onSelect={() => selectText("subtitle")}
+          onLayoutChange={onTextGeometry("subtitle")}
+        />
+        <EditableTextBlock
           block={template.textBlocks.description}
           text={product.description || "Descriere produs"}
+          selected={isTextSelected("description")}
+          interactive={interactiveText}
+          canvasWidth={template.width}
+          canvasHeight={template.height}
+          onSelect={() => selectText("description")}
+          onLayoutChange={onTextGeometry("description")}
         />
         <PriceRow
           priceText={priceText}
@@ -321,11 +356,12 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
           unitBlock={template.textBlocks.unit}
         />
         <BottomRows
-          sizeWidth={product.sizeWidth}
-          sizeHeight={product.sizeHeight}
+          sizeWidth={showSize ? product.sizeWidth : ""}
+          sizeHeight={showSize ? product.sizeHeight : ""}
           featureText={featureText}
           sizeBlock={template.textBlocks.size}
           featureBlock={template.textBlocks.feature}
+          anchorFeatureAtSize={!showSize}
         />
       </Layer>
     </Stage>

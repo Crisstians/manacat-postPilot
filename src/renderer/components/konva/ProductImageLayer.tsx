@@ -1,9 +1,11 @@
 import Konva from "konva";
-import { useEffect, useRef } from "react";
-import { Image, Transformer } from "react-konva";
+import { useEffect, useRef, useState } from "react";
+import { Image, Rect, Transformer } from "react-konva";
 import type { LayerRect } from "../../../shared/types";
 
 const MIN_PRODUCT_IMAGE_SIZE = 40;
+const HOVER_STROKE = "rgba(251, 146, 60, 0.85)";
+const SELECT_STROKE = "#fb923c";
 
 interface ProductImageLayerProps {
   image: HTMLImageElement;
@@ -40,6 +42,8 @@ export function ProductImageLayer({
 }: ProductImageLayerProps) {
   const imageRef = useRef<Konva.Image>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const [hovered, setHovered] = useState(false);
+  const showHoverOutline = hovered && !selected;
 
   useEffect(() => {
     const node = imageRef.current;
@@ -61,6 +65,17 @@ export function ProductImageLayer({
     transformer.nodes([node]);
     transformer.getLayer()?.batchDraw();
   }, [rect, selected]);
+
+  useEffect(() => {
+    if (selected) setHovered(false);
+  }, [selected]);
+
+  const setStagePointer = (cursor: string) => {
+    const stage = imageRef.current?.getStage();
+    if (stage) {
+      stage.container().style.cursor = cursor;
+    }
+  };
 
   const commitNodeLayout = () => {
     const node = imageRef.current;
@@ -105,6 +120,18 @@ export function ProductImageLayer({
         shadowOpacity={0.35}
         shadowOffsetX={0}
         shadowOffsetY={8}
+        onMouseEnter={() => {
+          if (selected) {
+            setStagePointer("move");
+            return;
+          }
+          setHovered(true);
+          setStagePointer("pointer");
+        }}
+        onMouseLeave={() => {
+          setHovered(false);
+          setStagePointer("default");
+        }}
         onClick={(event) => {
           event.cancelBubble = true;
           onSelect();
@@ -113,17 +140,38 @@ export function ProductImageLayer({
           event.cancelBubble = true;
           onSelect();
         }}
-        onDragEnd={commitNodeLayout}
+        onDragStart={() => {
+          setHovered(false);
+          setStagePointer("move");
+        }}
+        onDragEnd={() => {
+          setStagePointer(selected ? "move" : "pointer");
+          commitNodeLayout();
+        }}
         onTransformEnd={commitNodeLayout}
       />
+      {showHoverOutline ? (
+        <Rect
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
+          fill="rgba(251, 146, 60, 0.06)"
+          stroke={HOVER_STROKE}
+          strokeWidth={2}
+          listening={false}
+          perfectDrawEnabled={false}
+          shadowForStrokeEnabled={false}
+        />
+      ) : null}
       {selected ? (
         <Transformer
           ref={transformerRef}
           rotateEnabled={false}
           keepRatio
           enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
-          borderStroke="#fb923c"
-          anchorStroke="#fb923c"
+          borderStroke={SELECT_STROKE}
+          anchorStroke={SELECT_STROKE}
           anchorFill="#fff7ed"
           anchorSize={10}
           boundBoxFunc={(oldBox, newBox) => {

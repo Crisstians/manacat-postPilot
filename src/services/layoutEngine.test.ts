@@ -7,6 +7,7 @@ import {
   UNIT_ICON_GAP,
   createEstimateTextMeasurer,
   fitSingleLineText,
+  fitTextToBox,
   layoutM2IconY,
   layoutPriceRow,
   layoutDiscountPriceBlock,
@@ -40,6 +41,55 @@ describe("layoutEngine", () => {
 
     expect(fitted.fontSize).toBe(block.fontSize);
     expect(fitted.text).toBe("49.99");
+  });
+
+  it("wraps by width and keeps font size when height fits", () => {
+    const block = {
+      ...defaultTemplate.textBlocks.description,
+      maxWidth: 400,
+      height: 400,
+      fontSize: 40,
+      minFontSize: 20,
+    };
+    const fitted = fitTextToBox("Lorem ipsum dolor sit amet consectetur", block, linearMeasure);
+
+    expect(fitted.fontSize).toBe(block.fontSize);
+    expect(fitted.lines.length).toBeGreaterThan(1);
+    expect(fitted.lines.every((line) => line.width <= block.maxWidth + 1)).toBe(true);
+  });
+
+  it("shrinks font only when wrapped text exceeds box height", () => {
+    const block = {
+      ...defaultTemplate.textBlocks.description,
+      maxWidth: 200,
+      height: 60,
+      fontSize: 40,
+      lineHeight: 1,
+      minFontSize: 12,
+    };
+    const fitted = fitTextToBox(
+      "Text foarte lung care trebuie să încapă în cutia mică pe înălțime",
+      block,
+      linearMeasure,
+    );
+
+    expect(fitted.fontSize).toBeLessThan(block.fontSize);
+    expect(fitted.lines.length * fitted.fontSize * block.lineHeight).toBeLessThanOrEqual(
+      block.height + 1,
+    );
+  });
+
+  it("preserves explicit newlines when wrapping to box", () => {
+    const block = {
+      ...defaultTemplate.textBlocks.subtitle,
+      maxWidth: 2000,
+      height: 400,
+      fontSize: 40,
+    };
+    const fitted = fitTextToBox("Linia unu\nLinia doi", block, linearMeasure);
+
+    expect(fitted.fontSize).toBe(block.fontSize);
+    expect(fitted.lines.map((line) => line.text)).toEqual(["Linia unu", "Linia doi"]);
   });
 
   it("places m2 icon immediately after lei with dynamic spacing", () => {
@@ -154,8 +204,27 @@ describe("layoutEngine", () => {
     const lastSegment = layout.size?.segments.at(-1);
     const sizeEnd =
       (lastSegment?.x ?? 0) +
-      (lastSegment ? measure({ text: lastSegment.text, fontSize: lastSegment.fontSize, fontFamily: "Garet", fontWeight: 700 }).width : 0);
+      (lastSegment
+        ? measure({
+            text: lastSegment.text,
+            fontSize: lastSegment.fontSize,
+            fontFamily: "Garet",
+            fontWeight: 700,
+          }).width
+        : 0);
 
     expect(layout.feature?.icon.x).toBe(sizeEnd + BOTTOM_ROWS_GAP);
+  });
+
+  it("anchors feature row at size position when requested and size is missing", () => {
+    const sizeBlock = { ...defaultTemplate.textBlocks.size };
+    const featureBlock = { ...defaultTemplate.textBlocks.feature };
+    const layout = layoutBottomRows(null, "Lavabilă", sizeBlock, featureBlock, measure, {
+      anchorFeatureAtSize: true,
+    });
+
+    expect(layout.size).toBeNull();
+    expect(layout.feature?.icon.x).toBe(sizeBlock.x);
+    expect(layout.feature?.icon.y).toBeGreaterThanOrEqual(sizeBlock.y - 2);
   });
 });

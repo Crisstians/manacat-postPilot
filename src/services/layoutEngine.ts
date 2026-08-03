@@ -77,6 +77,13 @@ export interface WrappedLine {
   width: number;
 }
 
+export interface BoxFitResult {
+  fontSize: number;
+  lines: WrappedLine[];
+  width: number;
+  height: number;
+}
+
 export interface PriceRowLayout {
   price: { x: number; y: number; fontSize: number; text: string; width: number };
   unit: { x: number; y: number; fontSize: number; text: string; width: number };
@@ -125,6 +132,11 @@ export const defaultMinFontSize = (block: TextBlock): number =>
   block.minFontSize ?? Math.round(block.fontSize * 0.6);
 
 export const blockFontWeight = (block: TextBlock): number => block.weight ?? 700;
+
+export const resolveTextBlockHeight = (block: TextBlock): number =>
+  typeof block.height === "number" && Number.isFinite(block.height) && block.height > 0
+    ? block.height
+    : Math.round(block.fontSize * block.lineHeight);
 
 export const estimateTextWidth = (text: string, fontSize: number): number =>
   [...text].reduce((width, character) => width + (character === " " ? fontSize * 0.28 : fontSize * 0.55), 0);
@@ -211,55 +223,93 @@ export const wrapTextToLines = (
   measure: TextMeasurer,
   weight: number,
 ): string[] => {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return [""];
-  }
-
+  const paragraphs = (text ?? "").replace(/\r\n/g, "\n").split("\n");
   const lines: string[] = [];
-  let current = "";
 
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    const { width } = measure({
-      text: candidate,
-      fontSize,
-      fontFamily: GARET_FONT_FAMILY,
-      fontWeight: weight,
-    });
+  const pushWrappedParagraph = (paragraph: string) => {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push("");
+      return;
+    }
 
-    if (width <= maxWidth) {
-      current = candidate;
-      continue;
+    let current = "";
+
+    const measureWidth = (value: string) =>
+      measure({
+        text: value,
+        fontSize,
+        fontFamily: GARET_FONT_FAMILY,
+        fontWeight: weight,
+      }).width;
+
+    const flushLongWord = (word: string) => {
+      let remaining = word;
+      while (remaining.length > 0) {
+        let fit = "";
+        for (const character of remaining) {
+          const candidate = `${fit}${character}`;
+          if (fit && measureWidth(candidate) > maxWidth) {
+            break;
+          }
+          fit = candidate;
+        }
+        if (!fit) {
+          fit = remaining[0] ?? "";
+        }
+        lines.push(fit);
+        remaining = remaining.slice(fit.length);
+      }
+    };
+
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (measureWidth(candidate) <= maxWidth) {
+        current = candidate;
+        continue;
+      }
+
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+
+      if (measureWidth(word) <= maxWidth) {
+        current = word;
+        continue;
+      }
+
+      flushLongWord(word);
     }
 
     if (current) {
       lines.push(current);
     }
-    current = word;
+  };
+
+  for (const paragraph of paragraphs) {
+    pushWrappedParagraph(paragraph);
   }
 
-  if (current) {
-    lines.push(current);
-  }
-
-  return lines;
+  return lines.length > 0 ? lines : [""];
 };
 
-export const fitWrappedText = (
+export const fitTextToBox = (
   text: string,
   block: TextBlock,
   measure: TextMeasurer = createEstimateTextMeasurer(),
-  maxHeight = block.fontSize * block.lineHeight * 5,
-): { fontSize: number; lines: WrappedLine[] } => {
+): BoxFitResult => {
+  const maxHeight = resolveTextBlockHeight(block);
   const minSize = defaultMinFontSize(block);
   const weight = blockFontWeight(block);
+  const content = text ?? "";
+
   let bestSize = minSize;
-  let bestLines = wrapTextToLines(text, minSize, block.maxWidth, measure, weight);
+  let bestLines = wrapTextToLines(content, minSize, block.maxWidth, measure, weight);
 
   for (let size = block.fontSize; size >= minSize; size -= 1) {
-    const lines = wrapTextToLines(text, size, block.maxWidth, measure, weight);
-    const totalHeight = lines.length * size * block.lineHeight;
+    const lines = wrapTextToLines(content, size, block.maxWidth, measure, weight);
+    const totalHeight = Math.max(lines.length, 1) * size * block.lineHeight;
     if (totalHeight <= maxHeight) {
       bestSize = size;
       bestLines = lines;
@@ -283,7 +333,22 @@ export const fitWrappedText = (
     };
   });
 
-  return { fontSize: bestSize, lines };
+  return {
+    fontSize: bestSize,
+    lines,
+    width: block.maxWidth,
+    height: maxHeight,
+  };
+};
+
+export const fitWrappedText = (
+  text: string,
+  block: TextBlock,
+  measure: TextMeasurer = createEstimateTextMeasurer(),
+  maxHeight = resolveTextBlockHeight(block),
+): { fontSize: number; lines: WrappedLine[] } => {
+  const fitted = fitTextToBox(text, { ...block, height: maxHeight }, measure);
+  return { fontSize: fitted.fontSize, lines: fitted.lines };
 };
 
 export const layoutPriceRow = (
@@ -639,12 +704,24 @@ export const layoutIconTextRowAt = (
   };
 };
 
+/** Mută rândul de caracteristică pe poziția dimensiunii (când dimensiunea lipsește). */
+export const featureBlockAtSizePosition = (
+  sizeBlock: TextBlock,
+  featureBlock: TextBlock,
+): TextBlock => ({
+  ...featureBlock,
+  x: sizeBlock.x,
+  y: sizeBlock.y,
+  maxWidth: sizeBlock.maxWidth + BOTTOM_ROWS_GAP + featureBlock.maxWidth,
+});
+
 export const layoutBottomRows = (
   sizeParsed: ParsedSizeLabel | null,
   featureText: string,
   sizeBlock: TextBlock,
   featureBlock: TextBlock,
   measure: TextMeasurer = createEstimateTextMeasurer(),
+  options?: { anchorFeatureAtSize?: boolean },
 ): BottomRowsLayout => {
   const sizeFontSize = sizeParsed
     ? resolveSizeRowFontSize(sizeParsed, sizeBlock, measure)
@@ -657,7 +734,9 @@ export const layoutBottomRows = (
         ...featureBlock,
         x: sizeRowRightEdge(sizeLayout, measure, blockFontWeight(sizeBlock)) + BOTTOM_ROWS_GAP,
       }
-    : featureBlock;
+    : options?.anchorFeatureAtSize
+      ? featureBlockAtSizePosition(sizeBlock, featureBlock)
+      : featureBlock;
   const featureFontSize = feature
     ? resolveFeatureRowFontSize(feature, featureBlockPositioned, sizeFontSize, iconHeight, measure)
     : sizeFontSize;

@@ -276,6 +276,25 @@
       -8px 0;
   }
 
+  .preview-stage-scroll {
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .editor-shell {
+    overscroll-behavior-y: none;
+  }
+
+  @media (max-height: 820px) {
+    .editor-shell {
+      overflow-y: auto;
+    }
+
+    .preview-stage-scroll {
+      overflow: auto;
+    }
+  }
+
   .toast-item {
     animation: toast-slide-in 0.25s ease-out;
   }

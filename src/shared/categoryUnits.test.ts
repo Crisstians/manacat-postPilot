@@ -8,8 +8,8 @@ describe("unitForCategory", () => {
     expect(unitForCategory("parchet")).toBe("m²");
   });
 
-  it("returns L for vopsea", () => {
-    expect(unitForCategory("vopsea")).toBe("L");
+  it("returns buc for vopsea", () => {
+    expect(unitForCategory("vopsea")).toBe("buc");
   });
 
   it("returns kg for adezivi", () => {

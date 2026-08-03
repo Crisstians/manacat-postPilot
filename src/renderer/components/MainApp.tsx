@@ -15,8 +15,16 @@ import {
 } from "../../shared/exportReadiness";
 import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
 import { revokeBlobUrl } from "../../shared/productImage";
-import type { LayerRect, PostDraft, ProductInput, TemplateLayout } from "../../shared/types";
+import type {
+  LayerRect,
+  PostDraft,
+  ProductInput,
+  TemplateLayout,
+  TemplateTextBlockId,
+  TextBlockGeometry,
+} from "../../shared/types";
 import { MAX_BULK_POSTS } from "../../shared/types";
+import { applyTextBlockGeometry, normalizeTemplateTextBlocks } from "../../shared/textBlockLayout";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { savePngInBrowser } from "../services/browserExport";
@@ -192,6 +200,10 @@ export function MainApp({ onBack }: MainAppProps) {
             ...defaultTemplate,
             backgroundImagePath: nextBackground,
             productLayer: draft.template.productLayer,
+            textBlocks: normalizeTemplateTextBlocks({
+              ...defaultTemplate.textBlocks,
+              ...draft.template.textBlocks,
+            }),
           },
         };
       }),
@@ -312,6 +324,16 @@ export function MainApp({ onBack }: MainAppProps) {
 
   const onProductImageLayoutChange = (layout: LayerRect) => {
     setProduct((previous) => ({ ...previous, productImageLayout: layout }));
+  };
+
+  const onTextBlockLayoutChange = (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => {
+    setTemplate((previous) => ({
+      ...previous,
+      textBlocks: {
+        ...previous.textBlocks,
+        [blockId]: applyTextBlockGeometry(previous.textBlocks[blockId], geometry),
+      },
+    }));
   };
 
   const onDuplicateDraft = () => {
@@ -697,7 +719,7 @@ export function MainApp({ onBack }: MainAppProps) {
   }, [actionBusy, canActOnCurrentPost, onExport]);
 
   return (
-    <main className="h-screen overflow-hidden bg-base-200 text-base-content">
+    <main className="editor-shell h-screen overflow-hidden bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
       <PublishConfirmModal
         open={publishConfirmOpen}
@@ -726,9 +748,9 @@ export function MainApp({ onBack }: MainAppProps) {
           logoutBusy={logoutBusy}
         />
 
-        <div className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 gap-4 p-4 xl:grid-cols-12 xl:p-5">
-          <section className="flex min-h-0 flex-col xl:col-span-4">
-            <div className="app-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
+          <section className="flex flex-col xl:col-span-5 xl:min-h-0">
+            <div className="app-panel flex flex-1 flex-col overflow-hidden xl:min-h-0">
               <div className="shrink-0 border-b border-base-300/60 p-4 pb-3">
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-base-content">
                   <WandSparkles size={16} className="text-primary" />
@@ -822,9 +844,9 @@ export function MainApp({ onBack }: MainAppProps) {
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-col xl:col-span-8">
-            <div className="flex min-h-0 flex-1 flex-col gap-3">
-              <div className="app-panel flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+          <section className="flex flex-col xl:col-span-7 xl:min-h-0">
+            <div className="flex flex-1 flex-col gap-3 xl:min-h-0">
+              <div className="app-panel flex flex-1 flex-col p-4 xl:min-h-0 xl:overflow-hidden">
                 <BulkSlideNavigator
                   drafts={drafts}
                   activeIndex={activeIndex}
@@ -834,12 +856,13 @@ export function MainApp({ onBack }: MainAppProps) {
                   onRemove={onRemoveDraft}
                 />
 
-                <div className="min-h-0 flex-1">
+                <div className="min-h-[340px] flex-1 md:min-h-[380px] xl:min-h-0">
                   <CanvasPreview
                     ref={previewRef}
                     product={product}
                     template={template}
                     onProductImageLayoutChange={onProductImageLayoutChange}
+                    onTextBlockLayoutChange={onTextBlockLayoutChange}
                     onNavigateField={focusField}
                   />
                 </div>

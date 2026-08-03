@@ -1,17 +1,26 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { EXPORT_REQUIREMENTS, isExportReady } from "../../shared/exportReadiness";
-import type { LayerRect, ProductInput, TemplateLayout } from "../../shared/types";
+import type {
+  LayerRect,
+  ProductInput,
+  TemplateLayout,
+  TemplateTextBlockId,
+  TextBlockGeometry,
+} from "../../shared/types";
 import { PostCanvas, type PostCanvasHandle } from "./konva/PostCanvas";
 
 interface CanvasPreviewProps {
   product: ProductInput;
   template: TemplateLayout;
   onProductImageLayoutChange?: (layout: LayerRect) => void;
+  onTextBlockLayoutChange?: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
   onNavigateField?: (fieldKey: string) => void;
 }
 
+const MIN_PREVIEW_SCALE = 0.08;
+
 export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(function CanvasPreview(
-  { product, template, onProductImageLayoutChange, onNavigateField },
+  { product, template, onProductImageLayoutChange, onTextBlockLayoutChange, onNavigateField },
   ref,
 ) {
   const hasProductImage = Boolean(product.productImagePath);
@@ -37,7 +46,7 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
     const updateScale = () => {
       const widthScale = node.clientWidth / template.width;
       const heightScale = node.clientHeight / template.height;
-      const nextScale = Math.max(0.05, Math.min(widthScale, heightScale));
+      const nextScale = Math.max(MIN_PREVIEW_SCALE, Math.min(widthScale, heightScale));
       setScale(nextScale);
     };
 
@@ -96,10 +105,10 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
 
       <div
         ref={previewRef}
-        className="preview-stage relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-300/60"
+        className="preview-stage preview-stage-scroll app-scroll relative flex min-h-[280px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
       >
         <div
-          className="relative overflow-hidden rounded-lg border border-base-300/50 shadow-sm"
+          className="relative shrink-0 overflow-hidden rounded-lg border border-base-300/50 shadow-sm"
           style={{
             width: `${scaledWidth}px`,
             height: `${scaledHeight}px`,
@@ -111,15 +120,16 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
             template={template}
             previewScale={scale}
             onProductImageLayoutChange={onProductImageLayoutChange}
+            onTextBlockLayoutChange={onTextBlockLayoutChange}
           />
         </div>
       </div>
 
-      {hasProductImage ? (
-        <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
-          Apasă pe poza produsului pentru a o selecta, muta sau redimensiona.
-        </p>
-      ) : null}
+      <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
+        {hasProductImage
+          ? "Apasă pe text sau pe poza produsului pentru a muta sau redimensiona."
+          : "Apasă pe text pentru a muta sau redimensiona box-ul."}
+      </p>
     </div>
   );
 });

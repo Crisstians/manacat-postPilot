@@ -37,13 +37,15 @@ export interface LayerRect {
   height: number;
 }
 
-export type TextFitMode = "shrinkSingleLine" | "shrinkWrap";
+export type TextFitMode = "boxFit" | "shrinkSingleLine" | "shrinkWrap";
 
 export interface TextBlock {
   id: string;
   x: number;
   y: number;
   maxWidth: number;
+  /** Înălțimea box-ului de text (template units). */
+  height: number;
   fontSize: number;
   lineHeight: number;
   fill: string;
@@ -51,6 +53,8 @@ export interface TextBlock {
   fitMode?: TextFitMode;
   minFontSize?: number;
 }
+
+export type TextBlockGeometry = Pick<TextBlock, "x" | "y" | "maxWidth" | "height">;
 
 export interface TemplateLayout {
   id: string;
@@ -69,6 +73,8 @@ export interface TemplateLayout {
     feature: TextBlock;
   };
 }
+
+export type TemplateTextBlockId = keyof TemplateLayout["textBlocks"];
 
 export interface ExportRequest {
   product: ProductInput;

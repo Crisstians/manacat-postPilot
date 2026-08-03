@@ -2,6 +2,7 @@ import { ChevronDown, ImagePlus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import categories from "../../data/categories.json";
 import { featureOptionsForCategory, isValidFeatureForCategory } from "../../shared/categoryFeatures";
+import { categoryUsesSize } from "../../shared/categoryLayout";
 import { unitForCategory } from "../../shared/categoryUnits";
 import { EXPORT_REQUIREMENTS } from "../../shared/exportReadiness";
 import {
@@ -259,6 +260,7 @@ export function ProductForm({
 
   const featureOptions = featureOptionsForCategory(product.category);
   const selectedFeature = product.features[0] ?? "";
+  const showSizeField = categoryUsesSize(product.category);
 
   const missingClass = (isMissing: boolean) =>
     showFieldHints && isMissing ? "input-field-missing" : "";
@@ -270,6 +272,7 @@ export function ProductForm({
   const onCategoryChange = (category: ProductCategory) => {
     const currentFeature = product.features[0] ?? "";
     const keepFeature = currentFeature && isValidFeatureForCategory(category, currentFeature);
+    const keepSize = categoryUsesSize(category);
 
     onChange({
       ...product,
@@ -277,6 +280,8 @@ export function ProductForm({
       unit: unitForCategory(category),
       subtitle: defaultSubtitleForCategory(category),
       features: keepFeature ? [currentFeature] : [],
+      sizeWidth: keepSize ? product.sizeWidth : "",
+      sizeHeight: keepSize ? product.sizeHeight : "",
     });
   };
 
@@ -542,36 +547,38 @@ export function ProductForm({
           <FieldCounter value={product.description.length} max={PRODUCT_FIELD_LIMITS.description} />
         </FormField>
 
-        <FormField label="Dimensiune">
-          <div className="join w-full">
-            <input
-              id="sizeWidth"
-              className="input input-sm join-item w-full"
-              inputMode="numeric"
-              value={product.sizeWidth ?? ""}
-              maxLength={PRODUCT_FIELD_LIMITS.sizeDimension}
-              onChange={(event) => update("sizeWidth", clampDimensionValue(event.target.value))}
-              placeholder="60"
-              aria-label="Lățime dimensiune"
-            />
-            <span
-              className="join-item flex w-10 items-center justify-center border border-base-300/80 bg-base-200/80 text-sm font-semibold text-base-content/45"
-              aria-hidden="true"
-            >
-              ×
-            </span>
-            <input
-              id="sizeHeight"
-              className="input input-sm join-item w-full"
-              inputMode="numeric"
-              value={product.sizeHeight ?? ""}
-              maxLength={PRODUCT_FIELD_LIMITS.sizeDimension}
-              onChange={(event) => update("sizeHeight", clampDimensionValue(event.target.value))}
-              placeholder="120"
-              aria-label="Înălțime dimensiune"
-            />
-          </div>
-        </FormField>
+        {showSizeField ? (
+          <FormField label="Dimensiune">
+            <div className="join w-full">
+              <input
+                id="sizeWidth"
+                className="input input-sm join-item w-full"
+                inputMode="numeric"
+                value={product.sizeWidth ?? ""}
+                maxLength={PRODUCT_FIELD_LIMITS.sizeDimension}
+                onChange={(event) => update("sizeWidth", clampDimensionValue(event.target.value))}
+                placeholder="60"
+                aria-label="Lățime dimensiune"
+              />
+              <span
+                className="join-item flex w-10 items-center justify-center border border-base-300/80 bg-base-200/80 text-sm font-semibold text-base-content/45"
+                aria-hidden="true"
+              >
+                ×
+              </span>
+              <input
+                id="sizeHeight"
+                className="input input-sm join-item w-full"
+                inputMode="numeric"
+                value={product.sizeHeight ?? ""}
+                maxLength={PRODUCT_FIELD_LIMITS.sizeDimension}
+                onChange={(event) => update("sizeHeight", clampDimensionValue(event.target.value))}
+                placeholder="120"
+                aria-label="Înălțime dimensiune"
+              />
+            </div>
+          </FormField>
+        ) : null}
       </FormSection>
 
       <FormSection

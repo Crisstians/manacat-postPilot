@@ -10,6 +10,8 @@ import {
 } from "../../shared/announcementTypes";
 import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
 import { getPostTypeDefinition, type AnnouncementPostType } from "../../shared/postTypes";
+import { applyTextBlockGeometry } from "../../shared/textBlockLayout";
+import type { TemplateTextBlockId, TextBlockGeometry } from "../../shared/types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import {
@@ -41,6 +43,8 @@ interface AnnouncementEditorAppProps {
   postType: AnnouncementPostType;
   onBack: () => void;
 }
+
+const MIN_PREVIEW_SCALE = 0.08;
 
 export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAppProps) {
   const postTypeDef = getPostTypeDefinition(postType);
@@ -114,6 +118,19 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
       template: { ...current.template, backgroundImagePath: firstBundledTemplatePath },
     }));
   }, []);
+
+  const onTextBlockLayoutChange = (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => {
+    setDraft((current) => ({
+      ...current,
+      template: {
+        ...current.template,
+        textBlocks: {
+          ...current.template.textBlocks,
+          [blockId]: applyTextBlockGeometry(current.template.textBlocks[blockId], geometry),
+        },
+      },
+    }));
+  };
 
   const onLogout = async () => {
     setLogoutBusy(true);
@@ -257,7 +274,7 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
   const actionBusy = busy || publishBusy;
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-base-200 text-base-content">
+    <main className="editor-shell flex h-screen flex-col overflow-hidden bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
       <PublishConfirmModal
         open={publishConfirmOpen}
@@ -284,9 +301,9 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
         logoutBusy={logoutBusy}
       />
 
-      <div className="mx-auto grid min-h-0 w-full max-w-[1680px] flex-1 gap-4 p-4 xl:grid-cols-12 xl:p-5">
-        <section className="flex min-h-0 flex-col xl:col-span-4">
-          <div className="app-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
+        <section className="flex flex-col xl:col-span-5 xl:min-h-0">
+          <div className="app-panel flex flex-1 flex-col overflow-hidden xl:min-h-0">
             <div className="shrink-0 border-b border-base-300/60 p-4 pb-3">
               <p className="app-section-title mb-3">{postTypeDef.label}</p>
               <div className="surface-muted grid grid-cols-2 gap-1.5 rounded-xl border border-base-300/60 p-1">
@@ -363,8 +380,8 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
           </div>
         </section>
 
-        <section className="flex min-h-0 flex-col xl:col-span-8">
-          <div className="app-panel flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+        <section className="flex flex-col xl:col-span-7 xl:min-h-0">
+          <div className="app-panel flex flex-1 flex-col p-4 xl:min-h-0 xl:overflow-hidden">
             <div className="mb-3 shrink-0 border-b border-base-300/60 pb-3">
               <p className="app-section-title">Postare curentă</p>
               <p className="truncate text-sm font-medium text-base-content/80">{draftLabel}</p>
@@ -375,6 +392,7 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
               previewRef={previewRef}
               exportReady={exportReady}
               missingForExport={missingForExport}
+              onTextBlockLayoutChange={onTextBlockLayoutChange}
             />
 
             <div className="mt-3 shrink-0 border-t border-base-300/60 pt-4">
@@ -437,11 +455,13 @@ function AnnouncementPreviewPanel({
   previewRef,
   exportReady,
   missingForExport,
+  onTextBlockLayoutChange,
 }: {
   draft: AnnouncementDraft;
   previewRef: RefObject<AnnouncementCanvasHandle | null>;
   exportReady: boolean;
   missingForExport: string[];
+  onTextBlockLayoutChange: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -454,7 +474,7 @@ function AnnouncementPreviewPanel({
     const updateScale = () => {
       const widthScale = node.clientWidth / template.width;
       const heightScale = node.clientHeight / template.height;
-      setScale(Math.max(0.05, Math.min(widthScale, heightScale)));
+      setScale(Math.max(MIN_PREVIEW_SCALE, Math.min(widthScale, heightScale)));
     };
 
     updateScale();
@@ -464,7 +484,7 @@ function AnnouncementPreviewPanel({
   }, [template.height, template.width]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-[340px] flex-1 flex-col md:min-h-[380px] xl:min-h-0">
       <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-primary">
@@ -491,18 +511,27 @@ function AnnouncementPreviewPanel({
 
       <div
         ref={containerRef}
-        className="preview-stage relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-300/60"
+        className="preview-stage preview-stage-scroll app-scroll relative flex min-h-[280px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
       >
         <div
-          className="relative overflow-hidden rounded-lg border border-base-300/50 shadow-sm"
+          className="relative shrink-0 overflow-hidden rounded-lg border border-base-300/50 shadow-sm"
           style={{
             width: `${template.width * scale}px`,
             height: `${template.height * scale}px`,
           }}
         >
-          <AnnouncementCanvas ref={previewRef} draft={draft} previewScale={scale} />
+          <AnnouncementCanvas
+            ref={previewRef}
+            draft={draft}
+            previewScale={scale}
+            onTextBlockLayoutChange={onTextBlockLayoutChange}
+          />
         </div>
       </div>
+
+      <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
+        Apasă pe text pentru a muta sau redimensiona box-ul.
+      </p>
     </div>
   );
 }

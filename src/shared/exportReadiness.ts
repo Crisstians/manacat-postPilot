@@ -1,4 +1,5 @@
 import type { ProductInput, TemplateLayout } from "./types";
+import { categoryUsesSize } from "./categoryLayout";
 
 type ReadinessCheck = (product: ProductInput, template: TemplateLayout) => boolean;
 
@@ -47,7 +48,8 @@ export const OPTIONAL_FORM_FIELDS = [
   {
     key: "size",
     label: "Dimensiune",
-    check: (product: ProductInput) => Boolean(product.sizeWidth && product.sizeHeight),
+    check: (product: ProductInput) =>
+      categoryUsesSize(product.category) && Boolean(product.sizeWidth && product.sizeHeight),
   },
 ] as const;
 

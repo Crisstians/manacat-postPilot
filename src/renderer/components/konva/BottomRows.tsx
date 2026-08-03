@@ -18,6 +18,8 @@ interface BottomRowsProps {
   featureText: string;
   sizeBlock: TextBlock;
   featureBlock: TextBlock;
+  /** Când nu există dimensiune, ancorează caracteristica pe poziția dimensiunii. */
+  anchorFeatureAtSize?: boolean;
 }
 
 export function BottomRows({
@@ -26,6 +28,7 @@ export function BottomRows({
   featureText,
   sizeBlock,
   featureBlock,
+  anchorFeatureAtSize = false,
 }: BottomRowsProps) {
   const measure = useMemo(
     () => createCanvasTextMeasurer() ?? createEstimateTextMeasurer(),
@@ -36,8 +39,11 @@ export function BottomRows({
   const materialIcon = useKonvaImage(tipMaterialIcon);
 
   const layout = useMemo(
-    () => layoutBottomRows(parsedSize, featureText, sizeBlock, featureBlock, measure),
-    [parsedSize, featureText, sizeBlock, featureBlock, measure],
+    () =>
+      layoutBottomRows(parsedSize, featureText, sizeBlock, featureBlock, measure, {
+        anchorFeatureAtSize,
+      }),
+    [parsedSize, featureText, sizeBlock, featureBlock, measure, anchorFeatureAtSize],
   );
 
   return (

@@ -21,21 +21,21 @@ export function AppHeader({ onBack, subtitle, logoutBusy = false, onLogout }: Ap
 
   return (
     <header className="h-20 border-b border-white/10 bg-gradient-to-r from-black via-zinc-900 to-neutral-800 shadow-lg shadow-black/30">
-      <div className="flex h-full items-center justify-between gap-3 pl-0 pr-5">
-        <div className="flex h-full min-w-0 items-center gap-3">
+      <div className="flex h-full items-center justify-between gap-3 px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="btn btn-sm ml-3 border-white/20 bg-white/10 text-white hover:bg-white/20"
+              className="btn btn-sm border-white/20 bg-white/10 text-white hover:bg-white/20"
             >
               ← Înapoi
             </button>
           ) : null}
-          <img src={logo} alt="Logo Manacat" className="h-full w-auto rounded-lg object-contain" />
+          <img src={logo} alt="Logo Manacat" className="h-12 w-auto shrink-0 object-contain" />
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-bold text-white">PostPilot</h1>
-            {subtitle ? <p className="truncate text-xs text-white/60">{subtitle}</p> : null}
+            <h1 className="truncate font-sans text-2xl font-bold leading-none text-white">PostPilot</h1>
+            {subtitle ? <p className="mt-0.5 truncate text-xs text-white/60">{subtitle}</p> : null}
           </div>
         </div>
 

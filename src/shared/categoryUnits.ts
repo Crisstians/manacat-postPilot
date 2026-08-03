@@ -4,7 +4,7 @@ import type { ProductCategory } from "./types.js";
 export const UNIT_BY_CATEGORY: Record<ProductCategory, string> = {
   gresie: "m²",
   faianta: "m²",
-  vopsea: "L",
+  vopsea: "buc",
   parchet: "m²",
   adezivi: "kg",
   "produs-general": "buc",

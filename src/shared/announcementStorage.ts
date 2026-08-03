@@ -1,6 +1,7 @@
 import { createAnnouncementDraft } from "./announcementDrafts";
 import type { AnnouncementDraft } from "./announcementTypes";
 import type { AnnouncementPostType } from "./postTypes";
+import { normalizeTemplateLayout } from "./textBlockLayout";
 
 export interface AnnouncementSessionSnapshot {
   postType: AnnouncementPostType;
@@ -40,7 +41,10 @@ export const parseAnnouncementSession = (
       postType: expectedPostType,
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
       activePanel: parsed.activePanel === "template" ? "template" : "content",
-      draft,
+      draft: {
+        ...draft,
+        template: normalizeTemplateLayout(draft.template),
+      },
     };
   } catch {
     return null;

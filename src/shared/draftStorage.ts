@@ -1,5 +1,6 @@
 import { createPostDraft } from "./bulkPosts";
-import type { PostDraft, ProductInput } from "./types";
+import { normalizeTemplateLayout } from "./textBlockLayout";
+import type { PostDraft, ProductInput, TemplateLayout } from "./types";
 import { MAX_BULK_POSTS } from "./types";
 
 export const DRAFT_STORAGE_VERSION = 1 as const;
@@ -49,6 +50,7 @@ export const sanitizeProductForLoad = (product: ProductInput): ProductInput => {
 export const sanitizeDraftForLoad = (draft: PostDraft): PostDraft => ({
   ...draft,
   product: sanitizeProductForLoad(draft.product),
+  template: normalizeTemplateLayout(draft.template),
 });
 
 const parseDraft = (value: unknown): PostDraft | null => {
@@ -61,7 +63,7 @@ const parseDraft = (value: unknown): PostDraft | null => {
   return sanitizeDraftForLoad({
     id,
     product: value.product as unknown as ProductInput,
-    template: value.template as unknown as PostDraft["template"],
+    template: value.template as unknown as TemplateLayout,
     facebookCaption,
     facebookCaptionTouched,
   });
