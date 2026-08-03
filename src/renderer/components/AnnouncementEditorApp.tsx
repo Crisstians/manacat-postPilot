@@ -14,6 +14,7 @@ import { applyTextBlockGeometry } from "../../shared/textBlockLayout";
 import type { TemplateTextBlockId, TextBlockGeometry } from "../../shared/types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { usePreviewZoom } from "../hooks/usePreviewZoom";
 import {
   loadAnnouncementSession,
   renderAnnouncementImageBlob,
@@ -43,8 +44,6 @@ interface AnnouncementEditorAppProps {
   postType: AnnouncementPostType;
   onBack: () => void;
 }
-
-const MIN_PREVIEW_SCALE = 0.08;
 
 export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAppProps) {
   const postTypeDef = getPostTypeDefinition(postType);
@@ -274,7 +273,7 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
   const actionBusy = busy || publishBusy;
 
   return (
-    <main className="editor-shell flex h-screen flex-col overflow-hidden bg-base-200 text-base-content">
+    <main className="editor-shell flex flex-col bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
       <PublishConfirmModal
         open={publishConfirmOpen}
@@ -301,9 +300,9 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
         logoutBusy={logoutBusy}
       />
 
-      <div className="mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
-        <section className="flex flex-col xl:col-span-5 xl:min-h-0">
-          <div className="app-panel flex flex-1 flex-col overflow-hidden xl:min-h-0">
+      <div className="editor-shell-stack mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
+        <section className="flex min-w-0 flex-col xl:col-span-5 xl:min-h-0">
+          <div className="app-panel flex flex-1 flex-col xl:min-h-0 xl:overflow-hidden">
             <div className="shrink-0 border-b border-base-300/60 p-4 pb-3">
               <p className="app-section-title mb-3">{postTypeDef.label}</p>
               <div className="surface-muted grid grid-cols-2 gap-1.5 rounded-xl border border-base-300/60 p-1">
@@ -380,7 +379,7 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
           </div>
         </section>
 
-        <section className="flex flex-col xl:col-span-7 xl:min-h-0">
+        <section className="flex min-w-0 flex-col xl:col-span-7 xl:min-h-0">
           <div className="app-panel flex flex-1 flex-col p-4 xl:min-h-0 xl:overflow-hidden">
             <div className="mb-3 shrink-0 border-b border-base-300/60 pb-3">
               <p className="app-section-title">Postare curentă</p>
@@ -463,28 +462,16 @@ function AnnouncementPreviewPanel({
   missingForExport: string[];
   onTextBlockLayoutChange: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
   const { template } = draft;
-
-  useEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-
-    const updateScale = () => {
-      const widthScale = node.clientWidth / template.width;
-      const heightScale = node.clientHeight / template.height;
-      setScale(Math.max(MIN_PREVIEW_SCALE, Math.min(widthScale, heightScale)));
-    };
-
-    updateScale();
-    const observer = new ResizeObserver(updateScale);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [template.height, template.width]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scale, pan, zoomPercent, isZoomed, resetZoom } = usePreviewZoom(
+    containerRef,
+    template.width,
+    template.height,
+  );
 
   return (
-    <div className="flex min-h-[340px] flex-1 flex-col md:min-h-[380px] xl:min-h-0">
+    <div className="flex min-h-[340px] min-w-0 flex-1 flex-col md:min-h-[380px] xl:min-h-0">
       <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-primary">
@@ -494,13 +481,29 @@ function AnnouncementPreviewPanel({
             {template.width} × {template.height}px
           </p>
         </div>
-        <span
-          className={`badge badge-sm shrink-0 ${
-            exportReady ? "badge-soft badge-success" : "badge-soft badge-warning"
-          }`}
-        >
-          {exportReady ? "Gata export" : "Incomplet"}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {isZoomed ? (
+            <button
+              type="button"
+              onClick={resetZoom}
+              className="inline-flex h-7 min-h-0 items-center rounded-full border border-base-300/80 bg-base-100 px-2.5 text-[11px] font-semibold text-base-content shadow-sm transition hover:border-primary/40 hover:text-primary"
+              title="Resetează zoom"
+            >
+              {zoomPercent}%
+            </button>
+          ) : (
+            <span className="inline-flex h-7 items-center rounded-full border border-base-300/70 bg-base-100 px-2.5 text-[11px] font-semibold text-base-content/75">
+              {zoomPercent}%
+            </span>
+          )}
+          <span
+            className={`badge badge-sm shrink-0 ${
+              exportReady ? "badge-soft badge-success" : "badge-soft badge-warning"
+            }`}
+          >
+            {exportReady ? "Gata export" : "Incomplet"}
+          </span>
+        </div>
       </div>
 
       {!exportReady ? (
@@ -511,26 +514,32 @@ function AnnouncementPreviewPanel({
 
       <div
         ref={containerRef}
-        className="preview-stage preview-stage-scroll app-scroll relative flex min-h-[280px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
+        className="preview-stage preview-stage-scroll app-scroll relative min-h-[280px] w-full min-w-0 flex-1 overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
+        onDoubleClick={resetZoom}
+        title="Scroll pentru zoom pe cursor · dublu-click pentru reset"
       >
-        <div
-          className="relative shrink-0 overflow-hidden rounded-lg border border-base-300/50 shadow-sm"
-          style={{
-            width: `${template.width * scale}px`,
-            height: `${template.height * scale}px`,
-          }}
-        >
-          <AnnouncementCanvas
-            ref={previewRef}
-            draft={draft}
-            previewScale={scale}
-            onTextBlockLayoutChange={onTextBlockLayoutChange}
-          />
-        </div>
+        {scale !== null ? (
+          <div
+            className="absolute overflow-hidden rounded-lg shadow-sm ring-1 ring-base-300/50"
+            style={{
+              left: `${pan.x}px`,
+              top: `${pan.y}px`,
+              width: `${template.width * scale}px`,
+              height: `${template.height * scale}px`,
+            }}
+          >
+            <AnnouncementCanvas
+              ref={previewRef}
+              draft={draft}
+              previewScale={scale}
+              onTextBlockLayoutChange={onTextBlockLayoutChange}
+            />
+          </div>
+        ) : null}
       </div>
 
       <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
-        Apasă pe text pentru a muta sau redimensiona box-ul.
+        Scroll pe preview pentru zoom. Apasă pe text pentru a muta sau redimensiona box-ul.
       </p>
     </div>
   );

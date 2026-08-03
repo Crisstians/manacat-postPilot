@@ -4,7 +4,6 @@ import { flushSync } from "react-dom";
 import { Image, Layer, Rect, Stage } from "react-konva";
 import {
   resolveProductImageRect,
-  computeCoverRectBottomRight,
 } from "../../../services/layout";
 import { categoryShowsProductPlate, categoryUsesSize } from "../../../shared/categoryLayout";
 import { getDisplayProductImagePath } from "../../../shared/productImage";
@@ -141,18 +140,6 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     );
   }, [product.productImageLayout, productImage, template.productLayer]);
 
-  const backgroundRect = useMemo(() => {
-    if (!backgroundImage) {
-      return { x: 0, y: 0, width: template.width, height: template.height };
-    }
-
-    return computeCoverRectBottomRight({
-      sourceWidth: backgroundImage.width,
-      sourceHeight: backgroundImage.height,
-      target: { x: 0, y: 0, width: template.width, height: template.height },
-    });
-  }, [backgroundImage, template.height, template.width]);
-
   useEffect(() => {
     setSelection(null);
   }, [product.productImagePath]);
@@ -265,10 +252,10 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
           <Image
             name="background"
             image={backgroundImage}
-            x={backgroundRect.x}
-            y={backgroundRect.y}
-            width={backgroundRect.width}
-            height={backgroundRect.height}
+            x={0}
+            y={0}
+            width={template.width}
+            height={template.height}
             imageSmoothingEnabled
           />
         ) : null}

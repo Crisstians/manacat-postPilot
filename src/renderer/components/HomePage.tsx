@@ -12,10 +12,10 @@ interface HomePageProps {
 
 export function HomePage({ onSelect, onLogout, logoutBusy = false }: HomePageProps) {
   return (
-    <main className="home-page flex h-screen flex-col overflow-hidden bg-base-200 text-base-content">
+    <main className="home-page flex flex-col bg-base-200 text-base-content">
       <AppHeader onLogout={onLogout} logoutBusy={logoutBusy} />
 
-      <div className="app-scroll relative min-h-0 flex-1">
+      <div className="app-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="home-page-glow pointer-events-none absolute inset-0" aria-hidden="true" />
 
         <div className="relative mx-auto flex min-h-full w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-10 lg:py-12">

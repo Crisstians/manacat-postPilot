@@ -719,7 +719,7 @@ export function MainApp({ onBack }: MainAppProps) {
   }, [actionBusy, canActOnCurrentPost, onExport]);
 
   return (
-    <main className="editor-shell h-screen overflow-hidden bg-base-200 text-base-content">
+    <main className="editor-shell flex flex-col bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
       <PublishConfirmModal
         open={publishConfirmOpen}
@@ -740,7 +740,7 @@ export function MainApp({ onBack }: MainAppProps) {
         onCancel={closePublishConfirm}
         onConfirm={() => void onPublishToFacebook()}
       />
-      <div className="flex h-full flex-col">
+      <div className="editor-shell-body flex min-h-full flex-col">
         <AppHeader
           onBack={onBack}
           subtitle="Promovare produs"
@@ -748,9 +748,9 @@ export function MainApp({ onBack }: MainAppProps) {
           logoutBusy={logoutBusy}
         />
 
-        <div className="mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
-          <section className="flex flex-col xl:col-span-5 xl:min-h-0">
-            <div className="app-panel flex flex-1 flex-col overflow-hidden xl:min-h-0">
+        <div className="editor-shell-stack mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
+          <section className="flex min-w-0 flex-col xl:col-span-5 xl:min-h-0">
+            <div className="app-panel flex flex-1 flex-col xl:min-h-0 xl:overflow-hidden">
               <div className="shrink-0 border-b border-base-300/60 p-4 pb-3">
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-base-content">
                   <WandSparkles size={16} className="text-primary" />
@@ -844,7 +844,7 @@ export function MainApp({ onBack }: MainAppProps) {
             </div>
           </section>
 
-          <section className="flex flex-col xl:col-span-7 xl:min-h-0">
+          <section className="flex min-w-0 flex-col xl:col-span-7 xl:min-h-0">
             <div className="flex flex-1 flex-col gap-3 xl:min-h-0">
               <div className="app-panel flex flex-1 flex-col p-4 xl:min-h-0 xl:overflow-hidden">
                 <BulkSlideNavigator
@@ -856,7 +856,7 @@ export function MainApp({ onBack }: MainAppProps) {
                   onRemove={onRemoveDraft}
                 />
 
-                <div className="min-h-[340px] flex-1 md:min-h-[380px] xl:min-h-0">
+                <div className="min-h-[340px] min-w-0 flex-1 md:min-h-[380px] xl:min-h-0">
                   <CanvasPreview
                     ref={previewRef}
                     product={product}

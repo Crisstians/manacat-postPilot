@@ -48,21 +48,8 @@ const composeBackgroundLayer = async (
   width: number,
   height: number,
 ): Promise<Buffer> => {
-  const metadata = await sharp(backgroundPath).metadata();
-  const sourceWidth = metadata.width ?? width;
-  const sourceHeight = metadata.height ?? height;
-  const scale = Math.max(width / sourceWidth, height / sourceHeight);
-  const scaledWidth = Math.ceil(sourceWidth * scale);
-  const scaledHeight = Math.ceil(sourceHeight * scale);
-
   return sharp(backgroundPath)
-    .resize(scaledWidth, scaledHeight, { kernel: sharp.kernel.lanczos3 })
-    .extract({
-      left: Math.max(0, scaledWidth - width),
-      top: Math.max(0, scaledHeight - height),
-      width,
-      height,
-    })
+    .resize(width, height, { fit: "fill", kernel: sharp.kernel.lanczos3 })
     .png({ compressionLevel: 2, adaptiveFiltering: true })
     .toBuffer();
 };

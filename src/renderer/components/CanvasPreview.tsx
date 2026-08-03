@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useMemo, useRef } from "react";
 import { EXPORT_REQUIREMENTS, isExportReady } from "../../shared/exportReadiness";
 import type {
   LayerRect,
@@ -7,6 +7,7 @@ import type {
   TemplateTextBlockId,
   TextBlockGeometry,
 } from "../../shared/types";
+import { usePreviewZoom } from "../hooks/usePreviewZoom";
 import { PostCanvas, type PostCanvasHandle } from "./konva/PostCanvas";
 
 interface CanvasPreviewProps {
@@ -17,18 +18,20 @@ interface CanvasPreviewProps {
   onNavigateField?: (fieldKey: string) => void;
 }
 
-const MIN_PREVIEW_SCALE = 0.08;
-
 export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(function CanvasPreview(
   { product, template, onProductImageLayoutChange, onTextBlockLayoutChange, onNavigateField },
   ref,
 ) {
   const hasProductImage = Boolean(product.productImagePath);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
-  const scaledWidth = template.width * scale;
-  const scaledHeight = template.height * scale;
+  const { scale, pan, zoomPercent, isZoomed, resetZoom } = usePreviewZoom(
+    previewRef,
+    template.width,
+    template.height,
+  );
   const ready = isExportReady(product, template);
+  const scaledWidth = scale === null ? 0 : template.width * scale;
+  const scaledHeight = scale === null ? 0 : template.height * scale;
 
   const missingItems = useMemo(
     () =>
@@ -39,25 +42,8 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
     [product, template],
   );
 
-  useEffect(() => {
-    const node = previewRef.current;
-    if (!node) return;
-
-    const updateScale = () => {
-      const widthScale = node.clientWidth / template.width;
-      const heightScale = node.clientHeight / template.height;
-      const nextScale = Math.max(MIN_PREVIEW_SCALE, Math.min(widthScale, heightScale));
-      setScale(nextScale);
-    };
-
-    updateScale();
-    const observer = new ResizeObserver(() => updateScale());
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [template.height, template.width]);
-
   return (
-    <div className="flex h-full min-h-0 flex-col pt-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-col pt-3">
       <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-primary">
@@ -67,13 +53,29 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
             {template.width} × {template.height}px
           </p>
         </div>
-        <span
-          className={`badge badge-sm shrink-0 ${
-            ready ? "badge-soft badge-success" : "badge-soft badge-warning"
-          }`}
-        >
-          {ready ? "Gata export" : "Incomplet"}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {isZoomed ? (
+            <button
+              type="button"
+              onClick={resetZoom}
+              className="inline-flex h-7 min-h-0 items-center rounded-full border border-base-300/80 bg-base-100 px-2.5 text-[11px] font-semibold text-base-content shadow-sm transition hover:border-primary/40 hover:text-primary"
+              title="Resetează zoom"
+            >
+              {zoomPercent}%
+            </button>
+          ) : (
+            <span className="inline-flex h-7 items-center rounded-full border border-base-300/70 bg-base-100 px-2.5 text-[11px] font-semibold text-base-content/75">
+              {zoomPercent}%
+            </span>
+          )}
+          <span
+            className={`badge badge-sm shrink-0 ${
+              ready ? "badge-soft badge-success" : "badge-soft badge-warning"
+            }`}
+          >
+            {ready ? "Gata export" : "Incomplet"}
+          </span>
+        </div>
       </div>
 
       {!ready ? (
@@ -105,30 +107,36 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
 
       <div
         ref={previewRef}
-        className="preview-stage preview-stage-scroll app-scroll relative flex min-h-[280px] flex-1 items-center justify-center overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
+        className="preview-stage preview-stage-scroll app-scroll relative min-h-[280px] w-full min-w-0 flex-1 overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
+        onDoubleClick={resetZoom}
+        title="Scroll pentru zoom pe cursor · dublu-click pentru reset"
       >
-        <div
-          className="relative shrink-0 overflow-hidden rounded-lg border border-base-300/50 shadow-sm"
-          style={{
-            width: `${scaledWidth}px`,
-            height: `${scaledHeight}px`,
-          }}
-        >
-          <PostCanvas
-            ref={ref}
-            product={product}
-            template={template}
-            previewScale={scale}
-            onProductImageLayoutChange={onProductImageLayoutChange}
-            onTextBlockLayoutChange={onTextBlockLayoutChange}
-          />
-        </div>
+        {scale !== null ? (
+          <div
+            className="absolute overflow-hidden rounded-lg shadow-sm ring-1 ring-base-300/50"
+            style={{
+              left: `${pan.x}px`,
+              top: `${pan.y}px`,
+              width: `${scaledWidth}px`,
+              height: `${scaledHeight}px`,
+            }}
+          >
+            <PostCanvas
+              ref={ref}
+              product={product}
+              template={template}
+              previewScale={scale}
+              onProductImageLayoutChange={onProductImageLayoutChange}
+              onTextBlockLayoutChange={onTextBlockLayoutChange}
+            />
+          </div>
+        ) : null}
       </div>
 
       <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
         {hasProductImage
-          ? "Apasă pe text sau pe poza produsului pentru a muta sau redimensiona."
-          : "Apasă pe text pentru a muta sau redimensiona box-ul."}
+          ? "Scroll pe preview pentru zoom. Apasă pe text sau pe poza produsului pentru a muta sau redimensiona."
+          : "Scroll pe preview pentru zoom. Apasă pe text pentru a muta sau redimensiona box-ul."}
       </p>
     </div>
   );
