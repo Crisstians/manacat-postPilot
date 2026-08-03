@@ -88,8 +88,18 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
       ? resolveTemplateImageSource(template.backgroundImagePath)
       : undefined;
     const backgroundImage = useKonvaImageFromSrc(backgroundSrc);
-    const layout = useMemo(
-      () => getAnnouncementLayout(draft.postType, template.textBlocks),
+    const shopLayout = useMemo(
+      () =>
+        draft.postType === "shop"
+          ? getAnnouncementLayout("shop", template.textBlocks)
+          : null,
+      [draft.postType, template.textBlocks],
+    );
+    const hiringLayout = useMemo(
+      () =>
+        draft.postType === "hiring"
+          ? getAnnouncementLayout("hiring", template.textBlocks)
+          : null,
       [draft.postType, template.textBlocks],
     );
     const interactiveText = Boolean(onTextBlockLayoutChange);
@@ -148,10 +158,10 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
         </Layer>
 
         <Layer>
-          {draft.postType === "shop" && shopContent ? (
+          {shopLayout && shopContent ? (
             <>
               <EditableTextBlock
-                block={layout.title}
+                block={shopLayout.title}
                 text={shopContent.title || "Titlu anunț"}
                 selected={selection === "productName"}
                 interactive={interactiveText}
@@ -161,7 +171,7 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
                 onLayoutChange={onTextGeometry("productName")}
               />
               <EditableTextBlock
-                block={layout.highlight}
+                block={shopLayout.highlight}
                 text={shopContent.highlight || "Subtitlu"}
                 selected={selection === "subtitle"}
                 interactive={interactiveText}
@@ -171,7 +181,7 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
                 onLayoutChange={onTextGeometry("subtitle")}
               />
               <EditableTextBlock
-                block={layout.body}
+                block={shopLayout.body}
                 text={shopContent.message || "Mesaj anunț"}
                 selected={selection === "description"}
                 interactive={interactiveText}
@@ -180,14 +190,14 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
                 onSelect={() => setSelection("description")}
                 onLayoutChange={onTextGeometry("description")}
               />
-              <FitText block={layout.footer} text={shopContent.footer || "Footer anunț"} />
+              <FitText block={shopLayout.footer} text={shopContent.footer || "Footer anunț"} />
             </>
           ) : null}
 
-          {draft.postType === "hiring" && hiringContent ? (
+          {hiringLayout && hiringContent ? (
             <>
               <EditableTextBlock
-                block={layout.title}
+                block={hiringLayout.title}
                 text={hiringContent.jobTitle || "Post vacant"}
                 selected={selection === "productName"}
                 interactive={interactiveText}
@@ -197,7 +207,7 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
                 onLayoutChange={onTextGeometry("productName")}
               />
               <EditableTextBlock
-                block={layout.subtitle}
+                block={hiringLayout.subtitle}
                 text={hiringContent.subtitle || "Echipa Manacat"}
                 selected={selection === "subtitle"}
                 interactive={interactiveText}
@@ -207,7 +217,7 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
                 onLayoutChange={onTextGeometry("subtitle")}
               />
               <EditableTextBlock
-                block={layout.body}
+                block={hiringLayout.body}
                 text={hiringContent.requirements || "Cerințe job"}
                 selected={selection === "description"}
                 interactive={interactiveText}
@@ -216,7 +226,7 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
                 onSelect={() => setSelection("description")}
                 onLayoutChange={onTextGeometry("description")}
               />
-              <FitText block={layout.footer} text={hiringContent.applyLine || "Aplică acum"} />
+              <FitText block={hiringLayout.footer} text={hiringContent.applyLine || "Aplică acum"} />
             </>
           ) : null}
         </Layer>

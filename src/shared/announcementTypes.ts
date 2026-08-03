@@ -77,11 +77,26 @@ const hiringAnnouncementLayout = (blocks: TemplateLayout["textBlocks"]): HiringA
   footer: blocks.feature,
 });
 
-export const getAnnouncementLayout = (
+export function getAnnouncementLayout(
+  postType: "shop",
+  textBlocks?: TemplateLayout["textBlocks"],
+): ShopAnnouncementLayout;
+export function getAnnouncementLayout(
+  postType: "hiring",
+  textBlocks?: TemplateLayout["textBlocks"],
+): HiringAnnouncementLayout;
+export function getAnnouncementLayout(
+  postType: AnnouncementPostType,
+  textBlocks?: TemplateLayout["textBlocks"],
+): ShopAnnouncementLayout | HiringAnnouncementLayout;
+export function getAnnouncementLayout(
   postType: AnnouncementPostType,
   textBlocks: TemplateLayout["textBlocks"] = defaultTemplate.textBlocks,
-) =>
-  postType === "shop" ? shopAnnouncementLayout(textBlocks) : hiringAnnouncementLayout(textBlocks);
+): ShopAnnouncementLayout | HiringAnnouncementLayout {
+  return postType === "shop"
+    ? shopAnnouncementLayout(textBlocks)
+    : hiringAnnouncementLayout(textBlocks);
+}
 
 export const createAnnouncementTemplate = (backgroundImagePath = ""): TemplateLayout => {
   const base = defaultTemplate.textBlocks;
