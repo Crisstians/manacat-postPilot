@@ -7,9 +7,6 @@ export default defineConfig({
   // Required for Electron production builds loaded via file://
   base: './',
   plugins: [react(), tailwindcss()],
-  optimizeDeps: {
-    exclude: ['@imgly/background-removal'],
-  },
   server: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',

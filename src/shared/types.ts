@@ -91,6 +91,29 @@ export interface ExportResult {
   error?: string;
 }
 
+export type BulkExportMode = "folder" | "zip";
+
+export interface BulkExportRequest {
+  mode: BulkExportMode;
+  requests: ExportRequest[];
+  /** Pre-picked folder or ZIP path (dialog already shown during user gesture / early cancel). */
+  outputPath?: string;
+}
+
+export interface BulkExportPickResult {
+  success: boolean;
+  outputPath?: string;
+  error?: string;
+}
+
+export interface BulkExportResult {
+  success: boolean;
+  /** Folder path or ZIP file path. */
+  outputPath?: string;
+  exportedCount?: number;
+  error?: string;
+}
+
 export interface RenderPostResult {
   success: boolean;
   /** @deprecated Prefer `imageBase64` — kept for compat. */

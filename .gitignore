@@ -15,6 +15,7 @@ release
 *.local
 .env
 .env.*
+!.env.example
 
 # Accidental TypeScript emit inside src/
 src/**/*.js

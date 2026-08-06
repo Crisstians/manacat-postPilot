@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  BulkExportPickResult,
+  BulkExportRequest,
+  BulkExportResult,
+  BulkExportMode,
   ExportRequest,
   ExportResult,
   PrepareImageResult,
@@ -18,6 +22,13 @@ const api = {
   toFileUrl,
   exportPost: async (request: ExportRequest): Promise<ExportResult> =>
     ipcRenderer.invoke("post:export", request),
+  pickBulkExport: async (
+    mode: BulkExportMode,
+    postCount: number,
+  ): Promise<BulkExportPickResult> =>
+    ipcRenderer.invoke("post:pickBulkExport", { mode, postCount }),
+  exportBulk: async (request: BulkExportRequest): Promise<BulkExportResult> =>
+    ipcRenderer.invoke("post:exportBulk", request),
   renderPostPng: async (request: ExportRequest): Promise<RenderPostResult> =>
     ipcRenderer.invoke("post:renderPng", request),
   prepareImageForFacebook: async (imageBase64: string): Promise<PrepareImageResult> =>

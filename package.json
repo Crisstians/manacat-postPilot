@@ -2,7 +2,7 @@
   "name": "manacat-post",
   "productName": "Manacat PostPilot",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "module",
   "repository": {
     "type": "git",
@@ -21,12 +21,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@imgly/background-removal": "^1.7.0",
     "electron-updater": "^6.8.9",
     "flyonui": "^2.4.1",
+    "jszip": "^3.10.1",
     "konva": "^10.3.0",
     "lucide-react": "^1.23.0",
-    "onnxruntime-web": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-konva": "^19.2.5",

@@ -1,30 +1,49 @@
 import { resolveProductImageSource } from "../productImageSource";
+import { removeBackground } from "../../services/removeBackgroundApi";
 
 export interface BackgroundRemovalProgress {
   percent: number;
   label: string;
 }
 
+/**
+ * Removes product background via Manacat API (`POST /api/v1/remove-background`).
+ */
 export const removeProductBackground = async (
   imagePath: string,
+  accessToken: string,
   onProgress?: (progress: BackgroundRemovalProgress) => void,
 ): Promise<string> => {
-  const { removeBackground } = await import("@imgly/background-removal");
-  const imageSource = resolveProductImageSource(imagePath);
+  if (!accessToken.trim()) {
+    throw new Error("Trebuie să fii autentificat pentru a elimina fundalul.");
+  }
 
-  const blob = await removeBackground(imageSource, {
-    model: "isnet_quint8",
-    output: {
-      format: "image/png",
-    },
-    progress: (key: string, current: number, total: number) => {
-      if (!onProgress || total <= 0) return;
-      onProgress({
-        percent: Math.round((current / total) * 100),
-        label: key,
-      });
-    },
-  });
+  onProgress?.({ percent: 15, label: "Pregătim imaginea..." });
 
-  return URL.createObjectURL(blob);
+  const trimmed = imagePath.trim();
+  onProgress?.({ percent: 45, label: "Apelăm API-ul..." });
+
+  let pngBlob: Blob;
+  if (/^https?:\/\//i.test(trimmed)) {
+    pngBlob = await removeBackground({
+      accessToken,
+      imageUrl: trimmed,
+      size: "auto",
+    });
+  } else {
+    const imageSource = resolveProductImageSource(trimmed);
+    const response = await fetch(imageSource);
+    if (!response.ok) {
+      throw new Error("Nu s-a putut citi imaginea produsului.");
+    }
+    const imageBlob = await response.blob();
+    pngBlob = await removeBackground({
+      accessToken,
+      image: imageBlob,
+      size: "auto",
+    });
+  }
+
+  onProgress?.({ percent: 100, label: "Gata" });
+  return URL.createObjectURL(pngBlob);
 };

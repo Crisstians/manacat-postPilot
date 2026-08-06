@@ -9,6 +9,10 @@ interface ImportMeta {
 }
 
 import type {
+  BulkExportMode,
+  BulkExportPickResult,
+  BulkExportRequest,
+  BulkExportResult,
   ExportRequest,
   ExportResult,
   PrepareImageResult,
@@ -24,6 +28,8 @@ declare global {
       pickProductImage: () => Promise<string | null>;
       toFileUrl: (filePath: string) => string;
       exportPost: (request: ExportRequest) => Promise<ExportResult>;
+      pickBulkExport: (mode: BulkExportMode, postCount: number) => Promise<BulkExportPickResult>;
+      exportBulk: (request: BulkExportRequest) => Promise<BulkExportResult>;
       renderPostPng: (request: ExportRequest) => Promise<RenderPostResult>;
       prepareImageForFacebook: (imageBase64: string) => Promise<PrepareImageResult>;
       onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
@@ -34,6 +40,7 @@ declare global {
       suggestedName?: string;
       types?: Array<{ description?: string; accept: Record<string, string[]> }>;
     }) => Promise<FileSystemFileHandle>;
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
   }
 
   interface FileSystemFileHandle {
@@ -41,8 +48,15 @@ declare global {
     createWritable: () => Promise<FileSystemWritableFileStream>;
   }
 
+  interface FileSystemDirectoryHandle {
+    getFileHandle: (
+      name: string,
+      options?: { create?: boolean },
+    ) => Promise<FileSystemFileHandle>;
+  }
+
   interface FileSystemWritableFileStream extends WritableStream {
-    write: (data: Blob) => Promise<void>;
+    write: (data: Blob | string) => Promise<void>;
     close: () => Promise<void>;
   }
 }

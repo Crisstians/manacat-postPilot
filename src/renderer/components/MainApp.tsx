@@ -2,7 +2,9 @@ import { Download, ImagePlus, LayoutTemplate, Share2, WandSparkles } from "lucid
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateBulkCaption, generateCaption } from "../../services/captionGenerator";
 import { publishBulkPost, publishPost } from "../../services/postsApi";
+import type { CatalogProduct } from "../../services/productsApi";
 import { createPostDraft, duplicatePostDraft } from "../../shared/bulkPosts";
+import { mapCatalogProductToInput } from "../../shared/catalogProductMap";
 import { createEmptyWorkSession } from "../../shared/draftStorage";
 import { defaultTemplate } from "../../shared/defaults";
 import {
@@ -16,6 +18,7 @@ import {
 import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
 import { revokeBlobUrl } from "../../shared/productImage";
 import type {
+  BulkExportMode,
   LayerRect,
   PostDraft,
   ProductInput,
@@ -27,18 +30,31 @@ import { MAX_BULK_POSTS } from "../../shared/types";
 import { applyTextBlockGeometry, normalizeTemplateTextBlocks } from "../../shared/textBlockLayout";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import {
+  pickBrowserBulkDestination,
+  renderAllDraftFullPngs,
+  writeBulkToBrowserDestination,
+  type BrowserBulkDestination,
+} from "../services/browserBulkExport";
 import { savePngInBrowser } from "../services/browserExport";
 import {
   isDraftStorageQuotaError,
   loadWorkSession,
   saveWorkSession,
 } from "../services/draftPersistence";
-import { buildPostRenderRequest, renderAllDraftImages, renderPostImageBlob } from "../services/postImage";
+import {
+  buildAllDraftExportRequests,
+  buildPostRenderRequest,
+  renderAllDraftImages,
+  renderPostImageBlob,
+} from "../services/postImage";
+import { removeProductBackground } from "../services/removeProductBackground";
 import { ActionLoadingOverlay, type ActionLoadingState } from "./ActionLoadingOverlay";
 import { AppHeader } from "./AppHeader";
 import { BulkSlideNavigator } from "./BulkSlideNavigator";
 import { CanvasPreview } from "./CanvasPreview";
 import { CaptionEditor } from "./CaptionEditor";
+import { ExportBulkMethodModal } from "./ExportBulkMethodModal";
 import type { PostCanvasHandle } from "./konva/PostCanvas";
 import { ProductForm } from "./ProductForm";
 import {
@@ -78,7 +94,7 @@ interface MainAppProps {
 
 export function MainApp({ onBack }: MainAppProps) {
   const { user, logout, accessToken } = useAuth();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
   const [{ session: initialSession, restored: sessionRestored }] = useState(() =>
     user?.id
       ? loadWorkSession(user.id, firstBundledTemplatePath)
@@ -90,7 +106,10 @@ export function MainApp({ onBack }: MainAppProps) {
   const [bulkCaptionTouched, setBulkCaptionTouched] = useState(initialSession.bulkCaptionTouched);
   const [busy, setBusy] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [backgroundRemovalBusy, setBackgroundRemovalBusy] = useState(false);
+  const [backgroundRemovalProgress, setBackgroundRemovalProgress] = useState(0);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [exportBulkMethodOpen, setExportBulkMethodOpen] = useState(false);
   const [publishPreviewUrls, setPublishPreviewUrls] = useState<string[]>([]);
   const [publishPreviewLoading, setPublishPreviewLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<ActionLoadingState | null>(null);
@@ -322,6 +341,74 @@ export function MainApp({ onBack }: MainAppProps) {
     setProduct((previous) => resetProductImageState(previous, ""));
   };
 
+  const onRemoveBackground = async () => {
+    if (!product.productImagePath || product.productImageProcessedPath || backgroundRemovalBusy) {
+      return;
+    }
+    if (!accessToken) {
+      showError("Trebuie să fii autentificat pentru a elimina fundalul.");
+      return;
+    }
+
+    setBackgroundRemovalBusy(true);
+    setBackgroundRemovalProgress(0);
+    try {
+      const processedPath = await removeProductBackground(
+        product.productImagePath,
+        accessToken,
+        (progress) => {
+          setBackgroundRemovalProgress(progress.percent);
+        },
+      );
+      setProduct((previous) => {
+        revokeBlobUrl(previous.productImageProcessedPath);
+        return {
+          ...previous,
+          productImageProcessedPath: processedPath,
+          productImageLayout: undefined,
+        };
+      });
+      showSuccess("Fundal eliminat.");
+    } catch (removalError) {
+      showError(
+        removalError instanceof Error
+          ? removalError.message
+          : "Nu s-a putut elimina fundalul imaginii.",
+      );
+    } finally {
+      setBackgroundRemovalBusy(false);
+      setBackgroundRemovalProgress(0);
+    }
+  };
+
+  const onRevertBackground = () => {
+    setProduct((previous) => {
+      if (!previous.productImageProcessedPath) return previous;
+      revokeBlobUrl(previous.productImageProcessedPath);
+      return {
+        ...previous,
+        productImageProcessedPath: undefined,
+        productImageLayout: undefined,
+      };
+    });
+  };
+
+  const onApplyCatalogProduct = (catalog: CatalogProduct) => {
+    setProduct((previous) => {
+      const mapped = mapCatalogProductToInput(catalog, previous);
+      if (mapped.productImagePath === previous.productImagePath) {
+        return mapped;
+      }
+      revokeBlobUrl(previous.productImagePath);
+      revokeBlobUrl(previous.productImageProcessedPath);
+      return {
+        ...mapped,
+        productImageProcessedPath: undefined,
+        productImageLayout: undefined,
+      };
+    });
+  };
+
   const onProductImageLayoutChange = (layout: LayerRect) => {
     setProduct((previous) => ({ ...previous, productImageLayout: layout }));
   };
@@ -431,6 +518,16 @@ export function MainApp({ onBack }: MainAppProps) {
   };
 
   const onExport = async () => {
+    if (isBulkMode) {
+      if (allDraftErrors.length) {
+        setShowFieldHints(true);
+        showError(allDraftErrors.join(" "));
+        return;
+      }
+      setExportBulkMethodOpen(true);
+      return;
+    }
+
     if (validationErrors.length) {
       setShowFieldHints(true);
       showError(validationErrors.join(" "));
@@ -511,6 +608,154 @@ export function MainApp({ onBack }: MainAppProps) {
     } catch (exportError) {
       showError(
         exportError instanceof Error ? exportError.message : "Export eșuat (eroare necunoscută).",
+      );
+    } finally {
+      setActionLoading(null);
+      setBusy(false);
+    }
+  };
+
+  const onBulkExport = async (mode: BulkExportMode) => {
+    setExportBulkMethodOpen(false);
+    if (allDraftErrors.length) {
+      setShowFieldHints(true);
+      showError(allDraftErrors.join(" "));
+      return;
+    }
+
+    // Pick destination first while still in the user-gesture stack
+    // (browsers reject showSaveFilePicker / showDirectoryPicker after long awaits).
+    let electronOutputPath: string | undefined;
+    let browserDestination: BrowserBulkDestination | undefined;
+
+    try {
+      const electronApi = window.manacatApi;
+      if (electronApi?.exportBulk) {
+        const pick = await electronApi.pickBulkExport(mode, drafts.length);
+        if (!pick.success || !pick.outputPath) {
+          if (pick.error && pick.error !== "Export anulat de utilizator.") {
+            showError(pick.error);
+          }
+          return;
+        }
+        electronOutputPath = pick.outputPath;
+      } else {
+        const pick = await pickBrowserBulkDestination(mode, drafts.length);
+        if (!pick.success) {
+          if (pick.error && pick.error !== "Export anulat.") {
+            showError(pick.error);
+          }
+          return;
+        }
+        if (pick.note) {
+          showInfo(pick.note);
+        }
+        browserDestination = pick.destination;
+      }
+    } catch (pickError) {
+      showError(
+        pickError instanceof Error ? pickError.message : "Nu s-a putut alege destinația.",
+      );
+      return;
+    }
+
+    setBusy(true);
+    setActionLoading({
+      variant: "export",
+      stepIndex: 0,
+      progress: 8,
+      detail: `0 / ${drafts.length} postări`,
+    });
+
+    try {
+      if (window.manacatApi?.exportBulk && electronOutputPath) {
+        const requests = await buildAllDraftExportRequests(
+          drafts,
+          previewRef.current,
+          setActiveIndex,
+          (current, total) => {
+            setActionLoading({
+              variant: "export",
+              stepIndex: 1,
+              progress: Math.round((current / total) * 70),
+              detail: `${current} / ${total} postări`,
+            });
+          },
+        );
+
+        setActionLoading({
+          variant: "export",
+          stepIndex: 2,
+          progress: 85,
+          detail: mode === "folder" ? "Se salvează în folder..." : "Se creează arhiva ZIP...",
+        });
+
+        const result = await window.manacatApi.exportBulk({
+          mode,
+          requests,
+          outputPath: electronOutputPath,
+        });
+        if (!result.success) {
+          showError(result.error ?? "Export lot eșuat.");
+          return;
+        }
+
+        setActionLoading({
+          variant: "export",
+          stepIndex: 2,
+          progress: 100,
+          detail: "Export finalizat",
+        });
+        showSuccess(
+          `Export lot finalizat (${result.exportedCount ?? drafts.length}): ${result.outputPath}`,
+        );
+        return;
+      }
+
+      if (!browserDestination) {
+        showError("Destinația de export lipsește.");
+        return;
+      }
+
+      const items = await renderAllDraftFullPngs(
+        drafts,
+        previewRef.current,
+        setActiveIndex,
+        (current, total) => {
+          setActionLoading({
+            variant: "export",
+            stepIndex: 1,
+            progress: Math.round((current / total) * 70),
+            detail: `${current} / ${total} postări`,
+          });
+        },
+      );
+
+      setActionLoading({
+        variant: "export",
+        stepIndex: 2,
+        progress: 88,
+        detail: "Se salvează fișierele...",
+      });
+
+      const result = await writeBulkToBrowserDestination(browserDestination, items);
+      if (!result.success) {
+        showError(result.error ?? "Export lot eșuat.");
+        return;
+      }
+
+      setActionLoading({
+        variant: "export",
+        stepIndex: 2,
+        progress: 100,
+        detail: "Export finalizat",
+      });
+      showSuccess(
+        `Export lot finalizat (${result.exportedCount ?? drafts.length}): ${result.outputPath}`,
+      );
+    } catch (exportError) {
+      showError(
+        exportError instanceof Error ? exportError.message : "Export lot eșuat (eroare necunoscută).",
       );
     } finally {
       setActionLoading(null);
@@ -700,15 +945,17 @@ export function MainApp({ onBack }: MainAppProps) {
     }
   };
 
-  const actionBusy = busy || publishBusy;
+  const actionBusy = busy || publishBusy || backgroundRemovalBusy;
   const canActOnCurrentPost = exportReady;
   const canPublishBulk = isBulkMode ? allDraftErrors.length === 0 : exportReady;
+  const canExportBulk = isBulkMode ? allDraftErrors.length === 0 : exportReady;
+  const canTriggerExport = isBulkMode ? canExportBulk : canActOnCurrentPost;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
         event.preventDefault();
-        if (!actionBusy && canActOnCurrentPost) {
+        if (!actionBusy && canTriggerExport) {
           void onExport();
         }
       }
@@ -716,11 +963,17 @@ export function MainApp({ onBack }: MainAppProps) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actionBusy, canActOnCurrentPost, onExport]);
+  }, [actionBusy, canTriggerExport, onExport]);
 
   return (
     <main className="editor-shell flex flex-col bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
+      <ExportBulkMethodModal
+        open={exportBulkMethodOpen}
+        postCount={drafts.length}
+        onCancel={() => setExportBulkMethodOpen(false)}
+        onSelect={(mode) => void onBulkExport(mode)}
+      />
       <PublishConfirmModal
         open={publishConfirmOpen}
         title={
@@ -794,6 +1047,11 @@ export function MainApp({ onBack }: MainAppProps) {
                     onPickProductImage={onPickProductImage}
                     onProductImageFile={onProductImageFile}
                     onRemoveProductImage={onRemoveProductImage}
+                    onRemoveBackground={onRemoveBackground}
+                    onRevertBackground={onRevertBackground}
+                    backgroundRemovalBusy={backgroundRemovalBusy}
+                    backgroundRemovalProgress={backgroundRemovalProgress}
+                    onApplyCatalogProduct={onApplyCatalogProduct}
                     showFieldHints={showFieldHints}
                   />
                 </div>
@@ -873,10 +1131,12 @@ export function MainApp({ onBack }: MainAppProps) {
                       type="button"
                       className="btn btn-primary btn-sm min-w-44"
                       onClick={() => void onExport()}
-                      disabled={actionBusy || !canActOnCurrentPost}
+                      disabled={actionBusy || !canTriggerExport}
                       title={
-                        !canActOnCurrentPost
-                          ? `Completează: ${missingForExport.join(", ")}`
+                        !canTriggerExport
+                          ? isBulkMode
+                            ? "Completează toate postările din lot pentru export"
+                            : `Completează: ${missingForExport.join(", ")}`
                           : undefined
                       }
                     >
@@ -888,7 +1148,7 @@ export function MainApp({ onBack }: MainAppProps) {
                       ) : (
                         <>
                           <Download size={16} />
-                          Export imagine
+                          {isBulkMode ? `Export lot (${drafts.length})` : "Export imagine"}
                         </>
                       )}
                     </button>
@@ -918,14 +1178,23 @@ export function MainApp({ onBack }: MainAppProps) {
                       )}
                     </button>
                   </div>
-                  {!canActOnCurrentPost ? (
+                  {!canTriggerExport ? (
                     <p className="helper-text mt-2 text-xs">
-                      Pentru export, completează:{" "}
-                      <span className="font-medium text-base-content/70">
-                        {missingForExport.join(", ")}
-                      </span>
-                      {" · "}
-                      <span className="text-base-content/45">Ctrl+E când e gata</span>
+                      {isBulkMode ? (
+                        <>
+                          Pentru export lot, completează toate postările.{" "}
+                          <span className="text-base-content/45">Ctrl+E când e gata</span>
+                        </>
+                      ) : (
+                        <>
+                          Pentru export, completează:{" "}
+                          <span className="font-medium text-base-content/70">
+                            {missingForExport.join(", ")}
+                          </span>
+                          {" · "}
+                          <span className="text-base-content/45">Ctrl+E când e gata</span>
+                        </>
+                      )}
                     </p>
                   ) : (
                     <p className="helper-text mt-2 text-xs text-base-content/45">

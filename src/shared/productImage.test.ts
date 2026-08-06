@@ -40,9 +40,11 @@ describe("productImage", () => {
     ).toBe(true);
   });
 
-  it("detects blob and data urls for base64 export", () => {
+  it("detects blob, data and remote http(s) urls for base64 export", () => {
     expect(needsBase64Export("blob:abc")).toBe(true);
     expect(needsBase64Export("data:image/png;base64,abc")).toBe(true);
+    expect(needsBase64Export("https://cdn.example/p.png")).toBe(true);
+    expect(needsBase64Export("http://cdn.example/p.png")).toBe(true);
     expect(needsBase64Export("/tmp/product.png")).toBe(false);
   });
 

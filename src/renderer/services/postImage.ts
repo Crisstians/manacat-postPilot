@@ -131,3 +131,28 @@ export const renderAllDraftImages = async (
 
   return images;
 };
+
+/** Builds Sharp-ready export requests for every draft (switches active slide for Konva overlays). */
+export const buildAllDraftExportRequests = async (
+  drafts: PostDraft[],
+  previewRef: PostCanvasHandle | null,
+  setActiveIndex: (index: number) => void,
+  onProgress?: (current: number, total: number) => void,
+): Promise<ExportRequest[]> => {
+  const requests: ExportRequest[] = [];
+  const { flushSync } = await import("react-dom");
+
+  for (let index = 0; index < drafts.length; index += 1) {
+    const draft = drafts[index]!;
+    flushSync(() => setActiveIndex(index));
+    await waitForPreviewPaint();
+    onProgress?.(index + 1, drafts.length);
+    const request = await buildPostRenderRequest(previewRef, draft.product, draft.template);
+    if (!request) {
+      throw new Error(`Nu s-a putut genera overlay-ul pentru postarea ${index + 1}.`);
+    }
+    requests.push(request);
+  }
+
+  return requests;
+};

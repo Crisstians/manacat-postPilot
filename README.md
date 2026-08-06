@@ -34,7 +34,9 @@ src/services/      Compunere imagini, caption, API
 src/shared/        Tipuri, draft-uri, logică comună
 ```
 
-Backend-ul (autentificare, publicare Facebook) rulează separat pe Railway. Aplicația se conectează la el la login; URL-ul implicit e configurat în `src/config/api.ts`.
+Backend-ul (autentificare, publicare Facebook, eliminare fundal) rulează separat pe Railway. Aplicația se conectează la el la login; URL-ul implicit e configurat în `src/config/api.ts`.
+
+Cheia `REMOVE_BG_API_KEY` se configurează pe Railway (server), nu în PostPilot.
 
 ## Scripturi utile
 

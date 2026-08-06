@@ -10,6 +10,6 @@
     "types": ["node"],
     "resolveJsonModule": true
   },
-  "include": ["electron/**/*.ts", "src/shared/types.ts", "src/shared/unitDisplay.ts", "src/services/captionGenerator.ts", "src/services/imageComposer.ts", "src/services/layout.ts"],
+  "include": ["electron/**/*.ts", "src/shared/types.ts", "src/shared/unitDisplay.ts", "src/services/captionGenerator.ts", "src/services/imageComposer.ts", "src/services/layout.ts", "src/services/prepareForFacebook.ts"],
   "exclude": ["electron/preload.ts"]
 }

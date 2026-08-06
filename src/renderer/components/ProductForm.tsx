@@ -12,8 +12,10 @@ import {
 import { defaultSubtitleForCategory } from "../../shared/productSubtitle";
 import { clampDimensionValue } from "../../shared/sizeDisplay";
 import { getDisplayProductImagePath, hasRemovedBackground } from "../../shared/productImage";
+import type { CatalogProduct } from "../../services/productsApi";
 import type { ProductInput, ProductCategory, TemplateLayout } from "../../shared/types";
 import { resolveProductImageSource } from "../productImageSource";
+import { CatalogProductSearch } from "./CatalogProductSearch";
 import { FlyonAdvancedSelect } from "./FlyonAdvancedSelect";
 
 interface ProductFormProps {
@@ -24,6 +26,11 @@ interface ProductFormProps {
   onPickProductImage: () => Promise<void>;
   onProductImageFile?: (file: File) => void;
   onRemoveProductImage: () => void;
+  onRemoveBackground?: () => void;
+  onRevertBackground?: () => void;
+  backgroundRemovalBusy?: boolean;
+  backgroundRemovalProgress?: number;
+  onApplyCatalogProduct?: (catalog: CatalogProduct) => void;
   showFieldHints?: boolean;
 }
 
@@ -218,6 +225,11 @@ export function ProductForm({
   onPickProductImage,
   onProductImageFile,
   onRemoveProductImage,
+  onRemoveBackground,
+  onRevertBackground,
+  backgroundRemovalBusy = false,
+  backgroundRemovalProgress = 0,
+  onApplyCatalogProduct,
   showFieldHints = false,
 }: ProductFormProps) {
   const [imageDragOver, setImageDragOver] = useState(false);
@@ -333,6 +345,10 @@ export function ProductForm({
         complete={sectionComplete("basic")}
         missingCount={sectionMissingCount("basic")}
       >
+        {onApplyCatalogProduct ? (
+          <CatalogProductSearch onSelect={onApplyCatalogProduct} />
+        ) : null}
+
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Nume produs" htmlFor="productName">
             <input
@@ -638,6 +654,50 @@ export function ProductForm({
           )}
 
           <p className="helper-text truncate text-xs">{imageStatus}</p>
+
+          {product.productImagePath && onRemoveBackground ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => void onRemoveBackground()}
+                  disabled={backgroundRemovalBusy || hasRemovedBackground(product)}
+                >
+                  {backgroundRemovalBusy ? (
+                    <>
+                      <span className="loading loading-spinner loading-xs" />
+                      Se elimină fundalul...
+                    </>
+                  ) : (
+                    "Elimină fundalul"
+                  )}
+                </button>
+                {onRevertBackground ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={onRevertBackground}
+                    disabled={backgroundRemovalBusy || !hasRemovedBackground(product)}
+                  >
+                    Revino la original
+                  </button>
+                ) : null}
+              </div>
+              {backgroundRemovalBusy ? (
+                <div className="space-y-1">
+                  <progress
+                    className="progress progress-primary h-1.5 w-full"
+                    value={backgroundRemovalProgress}
+                    max={100}
+                  />
+                  <p className="text-[11px] text-base-content/50">
+                    {backgroundRemovalProgress}% · se procesează pe server
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </FormSection>
     </div>

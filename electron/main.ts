@@ -1,12 +1,17 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import JSZip from "jszip";
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } from "electron";
-import type { TemplateAsset } from "../src/shared/types.js";
 import { generateCaption } from "../src/services/captionGenerator.js";
 import { exportPostAssets, composePostPngBuffer } from "../src/services/imageComposer.js";
 import { prepareForFacebook } from "../src/services/prepareForFacebook.js";
-import type { ExportRequest } from "../src/shared/types.js";
+import type {
+  BulkExportRequest,
+  BulkExportResult,
+  ExportRequest,
+  TemplateAsset,
+} from "../src/shared/types.js";
 import { setupAutoUpdater } from "./autoUpdater.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -241,10 +246,32 @@ ipcMain.handle(
   },
 );
 
+const slugifyProductName = (productName: string): string => {
+  const slug = productName.trim().replace(/\s+/g, "-").toLowerCase();
+  return slug || "postare-manacat";
+};
+
+const uniqueBaseNames = (requests: ExportRequest[]): string[] => {
+  const used = new Map<string, number>();
+  return requests.map((request, index) => {
+    const base = slugifyProductName(request.product.productName);
+    const count = (used.get(base) ?? 0) + 1;
+    used.set(base, count);
+    if (count === 1) {
+      const collisionAhead = requests.some(
+        (other, otherIndex) =>
+          otherIndex > index && slugifyProductName(other.product.productName) === base,
+      );
+      if (!collisionAhead) return base;
+    }
+    return `${base}-${index + 1}`;
+  });
+};
+
 ipcMain.handle("post:export", async (_, payload: ExportRequest) => {
   const savePath = await dialog.showSaveDialog({
     title: "Salvează imaginea postării",
-    defaultPath: `${payload.product.productName.replace(/\s+/g, "-").toLowerCase()}.png`,
+    defaultPath: `${slugifyProductName(payload.product.productName)}.png`,
     filters: [{ name: "PNG Image", extensions: ["png"] }],
   });
 
@@ -268,6 +295,164 @@ ipcMain.handle("post:export", async (_, payload: ExportRequest) => {
 
   return result;
 });
+
+ipcMain.handle(
+  "post:pickBulkExport",
+  async (
+    _,
+    payload: { mode: BulkExportRequest["mode"]; postCount?: number },
+  ): Promise<import("../src/shared/types.js").BulkExportPickResult> => {
+    const postCount = payload?.postCount ?? 0;
+    try {
+      if (payload.mode === "folder") {
+        const folderPick = await dialog.showOpenDialog({
+          title: "Alege folderul pentru exportul lotului",
+          properties: ["openDirectory", "createDirectory"],
+        });
+        if (folderPick.canceled || !folderPick.filePaths[0]) {
+          return { success: false, error: "Export anulat de utilizator." };
+        }
+        return { success: true, outputPath: folderPick.filePaths[0] };
+      }
+
+      const zipPick = await dialog.showSaveDialog({
+        title: "Salvează arhiva ZIP a lotului",
+        defaultPath: `lot-manacat-${Math.max(postCount, 1)}-postari.zip`,
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+      });
+      if (zipPick.canceled || !zipPick.filePath) {
+        return { success: false, error: "Export anulat de utilizator." };
+      }
+      const zipPath = zipPick.filePath.endsWith(".zip")
+        ? zipPick.filePath
+        : `${zipPick.filePath}.zip`;
+      return { success: true, outputPath: zipPath };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Nu s-a putut alege destinația.",
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  "post:exportBulk",
+  async (_, payload: BulkExportRequest): Promise<BulkExportResult> => {
+    const requests = payload?.requests ?? [];
+    if (requests.length === 0) {
+      return { success: false, error: "Nu există postări de exportat." };
+    }
+
+    const templatesDir = getTemplatesDir();
+    const baseNames = uniqueBaseNames(requests);
+
+    try {
+      if (payload.mode === "folder") {
+        let folderPath = payload.outputPath?.trim() ?? "";
+        if (!folderPath) {
+          const folderPick = await dialog.showOpenDialog({
+            title: "Alege folderul pentru exportul lotului",
+            properties: ["openDirectory", "createDirectory"],
+          });
+
+          if (folderPick.canceled || !folderPick.filePaths[0]) {
+            return { success: false, error: "Export anulat de utilizator." };
+          }
+          folderPath = folderPick.filePaths[0];
+        }
+
+        let firstImagePath = "";
+
+        for (let index = 0; index < requests.length; index += 1) {
+          const request = requests[index]!;
+          const baseName = baseNames[index]!;
+          const imagePath = path.join(folderPath, `${baseName}.png`);
+          const captionPath = path.join(folderPath, `${baseName}.txt`);
+          const result = await exportPostAssets({
+            ...request,
+            textOverlayPngBase64: request.textOverlayPngBase64 ?? "",
+            outputImagePath: imagePath,
+            outputCaptionPath: captionPath,
+            caption: generateCaption(request.product),
+            templatesDir,
+          });
+          if (!result.success) {
+            return {
+              success: false,
+              error: result.error ?? `Export eșuat la postarea ${index + 1}.`,
+            };
+          }
+          if (!firstImagePath) firstImagePath = imagePath;
+        }
+
+        if (firstImagePath) {
+          shell.showItemInFolder(firstImagePath);
+        }
+
+        return {
+          success: true,
+          outputPath: folderPath,
+          exportedCount: requests.length,
+        };
+      }
+
+      let zipPath = payload.outputPath?.trim() ?? "";
+      if (!zipPath) {
+        const zipPick = await dialog.showSaveDialog({
+          title: "Salvează arhiva ZIP a lotului",
+          defaultPath: `lot-manacat-${requests.length}-postari.zip`,
+          filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+        });
+
+        if (zipPick.canceled || !zipPick.filePath) {
+          return { success: false, error: "Export anulat de utilizator." };
+        }
+
+        zipPath = zipPick.filePath.endsWith(".zip")
+          ? zipPick.filePath
+          : `${zipPick.filePath}.zip`;
+      } else if (!zipPath.endsWith(".zip")) {
+        zipPath = `${zipPath}.zip`;
+      }
+
+      const zip = new JSZip();
+      for (let index = 0; index < requests.length; index += 1) {
+        const request = requests[index]!;
+        const baseName = baseNames[index]!;
+        if (!request.textOverlayPngBase64) {
+          return {
+            success: false,
+            error: `Overlay-ul text lipsește pentru postarea ${index + 1}.`,
+          };
+        }
+        const pngBuffer = await composePostPngBuffer({
+          ...request,
+          textOverlayPngBase64: request.textOverlayPngBase64,
+          templatesDir,
+        });
+        zip.file(`${baseName}.png`, pngBuffer);
+        zip.file(`${baseName}.txt`, generateCaption(request.product));
+      }
+
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+      await fs.writeFile(zipPath, zipBuffer);
+
+      shell.showItemInFolder(zipPath);
+
+      return {
+        success: true,
+        outputPath: zipPath,
+        exportedCount: requests.length,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Export bulk eșuat.",
+      };
+    }
+  },
+);
 
 ipcMain.handle("post:renderPng", async (_, payload: ExportRequest) => {
   try {

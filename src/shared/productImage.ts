@@ -13,7 +13,9 @@ export const revokeBlobUrl = (url?: string): void => {
 };
 
 export const needsBase64Export = (source: string): boolean =>
-  source.startsWith("blob:") || source.startsWith("data:");
+  source.startsWith("blob:") ||
+  source.startsWith("data:") ||
+  /^https?:\/\//i.test(source);
 
 const isWebImagePath = (imagePath: string): boolean =>
   /^(blob:|data:|https?:|manacat:|file:)/.test(imagePath) ||
@@ -58,6 +60,9 @@ export const resolveProductImageSource = (
 
 export const imageSourceToBase64 = async (source: string): Promise<string> => {
   const response = await fetch(source);
+  if (!response.ok) {
+    throw new Error(`Nu s-a putut descărca imaginea (${response.status}).`);
+  }
   const buffer = await response.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";
