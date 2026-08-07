@@ -82,6 +82,8 @@ export interface ExportRequest {
   textOverlayPngBase64?: string;
   /** Folosit când imaginea activă este blob/data URL (ex. după remove background). */
   productImageBase64?: string;
+  /** Folosit pentru fundal blob/data. URL-urile https se descarcă în main process. */
+  backgroundImageBase64?: string;
 }
 
 export interface ExportResult {

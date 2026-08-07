@@ -6,6 +6,7 @@ import {
 } from "../../shared/productImage";
 import type { ExportRequest, PostDraft, ProductInput, TemplateLayout } from "../../shared/types";
 import { resolveProductImageSource } from "../productImageSource";
+import { resolveTemplateImageSource } from "../templateImageSource";
 
 export const waitForPreviewPaint = (): Promise<void> =>
   new Promise((resolve) => {
@@ -73,11 +74,20 @@ export const buildPostRenderRequest = async (
     productImageBase64 = await imageSourceToBase64(resolveProductImageSource(displayImagePath));
   }
 
+  // Only inline blob/data backgrounds. Remote https templates are fetched in the
+  // Electron main process so we avoid huge/corrupt base64 over IPC.
+  let backgroundImageBase64: string | undefined;
+  const backgroundPath = template.backgroundImagePath;
+  if (backgroundPath.startsWith("blob:") || backgroundPath.startsWith("data:")) {
+    backgroundImageBase64 = await imageSourceToBase64(resolveTemplateImageSource(backgroundPath));
+  }
+
   return {
     product,
     template,
     textOverlayPngBase64,
     productImageBase64,
+    backgroundImageBase64,
   };
 };
 
