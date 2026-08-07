@@ -2,7 +2,7 @@
   "name": "manacat-post",
   "productName": "Manacat PostPilot",
   "private": true,
-  "version": "1.2.3",
+  "version": "1.3.0",
   "type": "module",
   "repository": {
     "type": "git",
@@ -60,6 +60,15 @@
         "repo": "manacat-postPilot"
       }
     ],
+    "fileAssociations": [
+      {
+        "ext": "pman",
+        "name": "Manacat PostPilot Document",
+        "description": "Document Manacat PostPilot",
+        "role": "Editor",
+        "icon": "icon.ico"
+      }
+    ],
     "win": {
       "icon": "build/icon.png",
       "target": [
@@ -68,7 +77,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
       "createDesktopShortcut": true,

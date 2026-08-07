@@ -1,5 +1,5 @@
 import { Download, FileText, LayoutTemplate, Share2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { publishPost } from "../../services/postsApi";
 import { createEmptyAnnouncementSession } from "../../shared/announcementStorage";
 import {
@@ -11,9 +11,10 @@ import {
 import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
 import { getPostTypeDefinition, type AnnouncementPostType } from "../../shared/postTypes";
 import { applyTextBlockGeometry } from "../../shared/textBlockLayout";
-import type { TemplateTextBlockId, TextBlockGeometry } from "../../shared/types";
+import type { TemplateLayout, TemplateTextBlockId, TextBlockGeometry } from "../../shared/types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useEnsureApiTemplate } from "../hooks/useEnsureApiTemplate";
 import { usePreviewZoom } from "../hooks/usePreviewZoom";
 import {
   loadAnnouncementSession,
@@ -71,6 +72,12 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
   const previewRef = useRef<AnnouncementCanvasHandle>(null);
   const skipAutoSaveRef = useRef(true);
   const restoreToastShownRef = useRef(false);
+
+  const applyApiTemplateFallback = useCallback((layout: TemplateLayout) => {
+    setDraft((current) => ({ ...current, template: layout }));
+  }, []);
+
+  useEnsureApiTemplate(draft.template, applyApiTemplateFallback, "announcement");
 
   const exportReady = useMemo(() => isAnnouncementExportReady(draft), [draft]);
   const missingForExport = useMemo(() => getAnnouncementMissingLabels(draft), [draft]);
@@ -336,6 +343,7 @@ export function AnnouncementEditorApp({ postType, onBack }: AnnouncementEditorAp
               ) : (
                 <TemplateControls
                   template={draft.template}
+                  kind="announcement"
                   onChange={(template) =>
                     setDraft((current) => ({
                       ...current,
@@ -464,7 +472,7 @@ function AnnouncementPreviewPanel({
 }) {
   const { template } = draft;
   const containerRef = useRef<HTMLDivElement>(null);
-  const { scale, pan, zoomPercent, isZoomed, resetZoom } = usePreviewZoom(
+  const { scale, pan, zoomPercent, isZoomed, isPanning, startPan, resetZoom } = usePreviewZoom(
     containerRef,
     template.width,
     template.height,
@@ -514,9 +522,10 @@ function AnnouncementPreviewPanel({
 
       <div
         ref={containerRef}
-        className="preview-stage preview-stage-scroll app-scroll relative min-h-[280px] w-full min-w-0 flex-1 overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
-        onDoubleClick={resetZoom}
-        title="Scroll pentru zoom pe cursor · dublu-click pentru reset"
+        className={`preview-stage preview-stage-scroll app-scroll relative min-h-[280px] w-full min-w-0 flex-1 overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0 ${
+          isPanning ? "cursor-grabbing select-none" : "cursor-grab"
+        }`}
+        title="Scroll pentru zoom · ține click pentru a muta preview-ul"
       >
         {scale !== null ? (
           <div
@@ -533,13 +542,15 @@ function AnnouncementPreviewPanel({
               draft={draft}
               previewScale={scale}
               onTextBlockLayoutChange={onTextBlockLayoutChange}
+              onViewportPanStart={startPan}
             />
           </div>
         ) : null}
       </div>
 
       <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
-        Scroll pe preview pentru zoom. Apasă pe text pentru a muta sau redimensiona box-ul.
+        Scroll pentru zoom · ține click pe fundal ca să muți preview-ul. Apasă pe text pentru a muta
+        sau redimensiona box-ul.
       </p>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 const MIN_FIT_SCALE = 0.08;
 const MIN_USER_ZOOM = 0.5;
@@ -21,9 +21,17 @@ const readContentBox = (node: HTMLElement) => {
   };
 };
 
+type PanDragSession = {
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+};
+
 /**
  * Fits the template into a preview container, then zooms with the mouse wheel
- * toward the cursor position (not the viewport center). Export resolution is unaffected.
+ * toward the cursor position (not the viewport center). Hold-drag pans the preview.
+ * Export resolution is unaffected.
  */
 export function usePreviewZoom(
   containerRef: RefObject<HTMLElement | null>,
@@ -33,13 +41,26 @@ export function usePreviewZoom(
   const [fitScale, setFitScale] = useState<number | null>(null);
   const [userZoom, setUserZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
 
   const fitScaleRef = useRef(fitScale);
   const userZoomRef = useRef(userZoom);
   const panRef = useRef(pan);
+  const panDragRef = useRef<PanDragSession | null>(null);
   fitScaleRef.current = fitScale;
   userZoomRef.current = userZoom;
   panRef.current = pan;
+
+  const startPan = useCallback((clientX: number, clientY: number) => {
+    if (panDragRef.current) return;
+    panDragRef.current = {
+      startX: clientX,
+      startY: clientY,
+      originX: panRef.current.x,
+      originY: panRef.current.y,
+    };
+    setIsPanning(true);
+  }, []);
 
   const centerPan = (
     nextFit: number,
@@ -145,6 +166,52 @@ export function usePreviewZoom(
     return () => node.removeEventListener("wheel", onWheel);
   }, [containerRef]);
 
+  // Pan when dragging the empty padding/checkerboard around the canvas.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      // Ignore bubbled events from the Konva canvas — empty-stage pan starts via startPan.
+      if (event.target !== node) return;
+      event.preventDefault();
+      startPan(event.clientX, event.clientY);
+    };
+
+    node.addEventListener("pointerdown", onPointerDown);
+    return () => node.removeEventListener("pointerdown", onPointerDown);
+  }, [containerRef, startPan]);
+
+  useEffect(() => {
+    if (!isPanning) return;
+
+    const onPointerMove = (event: PointerEvent) => {
+      const session = panDragRef.current;
+      if (!session) return;
+      const nextPan = {
+        x: session.originX + (event.clientX - session.startX),
+        y: session.originY + (event.clientY - session.startY),
+      };
+      panRef.current = nextPan;
+      setPan(nextPan);
+    };
+
+    const endPan = () => {
+      panDragRef.current = null;
+      setIsPanning(false);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", endPan);
+    window.addEventListener("pointercancel", endPan);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", endPan);
+      window.removeEventListener("pointercancel", endPan);
+    };
+  }, [isPanning]);
+
   const resetZoom = () => {
     const node = containerRef.current;
     const currentFit = fitScaleRef.current;
@@ -170,6 +237,8 @@ export function usePreviewZoom(
     userZoom,
     zoomPercent,
     isZoomed,
+    isPanning,
+    startPan,
     resetZoom,
   };
 }

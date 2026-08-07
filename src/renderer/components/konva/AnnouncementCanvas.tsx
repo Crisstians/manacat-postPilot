@@ -23,7 +23,20 @@ interface AnnouncementCanvasProps {
   draft: AnnouncementDraft;
   previewScale?: number;
   onTextBlockLayoutChange?: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
+  onViewportPanStart?: (clientX: number, clientY: number) => void;
 }
+
+const readPointerClient = (
+  event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+): { clientX: number; clientY: number } | null => {
+  const native = event.evt;
+  if ("touches" in native) {
+    const touch = native.touches[0] ?? native.changedTouches[0];
+    return touch ? { clientX: touch.clientX, clientY: touch.clientY } : null;
+  }
+  if (native.button !== 0) return null;
+  return { clientX: native.clientX, clientY: native.clientY };
+};
 
 type TextSelection = TemplateTextBlockId | null;
 
@@ -80,7 +93,10 @@ const isInteractiveTextTarget = (target: Konva.Node): boolean => {
 };
 
 export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, AnnouncementCanvasProps>(
-  function AnnouncementCanvas({ draft, previewScale = 1, onTextBlockLayoutChange }, ref) {
+  function AnnouncementCanvas(
+    { draft, previewScale = 1, onTextBlockLayoutChange, onViewportPanStart },
+    ref,
+  ) {
     const stageRef = useRef<Konva.Stage>(null);
     const [selection, setSelection] = useState<TextSelection>(null);
     const { template } = draft;
@@ -127,9 +143,14 @@ export const AnnouncementCanvas = forwardRef<AnnouncementCanvasHandle, Announcem
       draft.postType === "hiring" ? (draft.content as HiringAnnouncementInput) : null;
 
     const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-      if (!interactiveText) return;
       if (isInteractiveTextTarget(event.target)) return;
-      setSelection(null);
+      if (interactiveText) {
+        setSelection(null);
+      }
+      const point = readPointerClient(event);
+      if (point) {
+        onViewportPanStart?.(point.clientX, point.clientY);
+      }
     };
 
     const onTextGeometry = (blockId: TemplateTextBlockId) => (geometry: TextBlockGeometry) => {

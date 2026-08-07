@@ -6,6 +6,9 @@ import type { TextBlock, TextBlockGeometry } from "../../../shared/types";
 import { FitText } from "./FitText";
 
 const MIN_TEXT_BOX_SIZE = 40;
+/** Minim px pe stage înainte să înceapă drag-ul — click simplu nu mută box-ul. */
+const TEXT_DRAG_DISTANCE = 5;
+const LAYOUT_EPSILON = 0.5;
 /** Contur hover (stil Canva) — mai subtil decât selecția. */
 const HOVER_STROKE = "rgba(251, 146, 60, 0.85)";
 const SELECT_STROKE = "#fb923c";
@@ -14,9 +17,11 @@ interface EditableTextFrameProps {
   block: TextBlock;
   selected: boolean;
   interactive: boolean;
+  editing?: boolean;
   canvasWidth: number;
   canvasHeight: number;
   onSelect: () => void;
+  onEditRequest?: () => void;
   onLayoutChange: (geometry: TextBlockGeometry) => void;
   children: ReactNode;
 }
@@ -33,22 +38,33 @@ const clampGeometry = (
   return { x, y, maxWidth, height };
 };
 
+const stopDomBubble = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+  event.cancelBubble = true;
+  event.evt.stopPropagation();
+};
+
 /** Cadru redimensionabil/mutabil peste conținut text (FitText sau layout-uri compuse). */
 export function EditableTextFrame({
   block,
   selected,
   interactive,
+  editing = false,
   canvasWidth,
   canvasHeight,
   onSelect,
+  onEditRequest,
   onLayoutChange,
   children,
 }: EditableTextFrameProps) {
   const groupRef = useRef<Konva.Group>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
+  const didDragRef = useRef(false);
   const [hovered, setHovered] = useState(false);
   const boxHeight = resolveTextBlockHeight(block);
-  const showHoverOutline = interactive && hovered && !selected;
+  const showHoverOutline = interactive && hovered && !selected && !editing;
+  const showTransformer = selected && interactive && !editing;
+  // Doar textul selectat se poate muta — click pe neslectat = select, nu drag.
+  const canDrag = selected && !editing;
 
   useEffect(() => {
     const node = groupRef.current;
@@ -61,18 +77,18 @@ export function EditableTextFrame({
   useEffect(() => {
     const transformer = transformerRef.current;
     const node = groupRef.current;
-    if (!selected || !interactive || !transformer || !node) {
+    if (!showTransformer || !transformer || !node) {
       transformer?.nodes([]);
       return;
     }
 
     transformer.nodes([node]);
     transformer.getLayer()?.batchDraw();
-  }, [block, interactive, selected]);
+  }, [block, showTransformer]);
 
   useEffect(() => {
-    if (selected) setHovered(false);
-  }, [selected]);
+    if (selected || editing) setHovered(false);
+  }, [selected, editing]);
 
   const setStagePointer = (cursor: string) => {
     const stage = groupRef.current?.getStage();
@@ -102,7 +118,25 @@ export function EditableTextFrame({
     );
 
     node.position({ x: next.x, y: next.y });
+
+    const unchanged =
+      Math.abs(next.x - block.x) < LAYOUT_EPSILON &&
+      Math.abs(next.y - block.y) < LAYOUT_EPSILON &&
+      Math.abs(next.maxWidth - block.maxWidth) < LAYOUT_EPSILON &&
+      Math.abs(next.height - boxHeight) < LAYOUT_EPSILON;
+
+    if (unchanged) return;
     onLayoutChange(next);
+  };
+
+  const handleSelectClick = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    stopDomBubble(event);
+    if (editing) return;
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+    onSelect();
   };
 
   if (!interactive) {
@@ -116,8 +150,21 @@ export function EditableTextFrame({
         name={`text-block-${block.id}`}
         x={block.x}
         y={block.y}
-        draggable
+        draggable={canDrag}
+        dragDistance={TEXT_DRAG_DISTANCE}
+        onMouseDown={(event) => {
+          didDragRef.current = false;
+          stopDomBubble(event);
+        }}
+        onTouchStart={(event) => {
+          didDragRef.current = false;
+          stopDomBubble(event);
+        }}
         onMouseEnter={() => {
+          if (editing) {
+            setStagePointer("text");
+            return;
+          }
           if (selected) {
             setStagePointer("move");
             return;
@@ -129,20 +176,35 @@ export function EditableTextFrame({
           setHovered(false);
           setStagePointer("default");
         }}
-        onClick={(event) => {
-          event.cancelBubble = true;
+        onClick={handleSelectClick}
+        onTap={handleSelectClick}
+        onDblClick={(event) => {
+          stopDomBubble(event);
+          if (editing) return;
+          didDragRef.current = false;
           onSelect();
+          onEditRequest?.();
         }}
-        onTap={(event) => {
-          event.cancelBubble = true;
+        onDblTap={(event) => {
+          stopDomBubble(event);
+          if (editing) return;
+          didDragRef.current = false;
           onSelect();
+          onEditRequest?.();
         }}
         onDragStart={() => {
+          didDragRef.current = true;
           setHovered(false);
           setStagePointer("move");
         }}
         onDragEnd={() => {
           setStagePointer(selected ? "move" : "pointer");
+          if (!didDragRef.current) {
+            // Anulare / click fără mișcare — pune nodul înapoi.
+            const node = groupRef.current;
+            if (node) node.position({ x: block.x, y: block.y });
+            return;
+          }
           commitNodeLayout();
         }}
         onTransformEnd={commitNodeLayout}
@@ -162,7 +224,7 @@ export function EditableTextFrame({
           listening
         />
       </Group>
-      {selected ? (
+      {showTransformer ? (
         <Transformer
           ref={transformerRef}
           rotateEnabled={false}
@@ -204,9 +266,11 @@ interface EditableTextBlockProps {
   text: string;
   selected: boolean;
   interactive: boolean;
+  editing?: boolean;
   canvasWidth: number;
   canvasHeight: number;
   onSelect: () => void;
+  onEditRequest?: () => void;
   onLayoutChange: (geometry: TextBlockGeometry) => void;
 }
 
@@ -215,9 +279,11 @@ export function EditableTextBlock({
   text,
   selected,
   interactive,
+  editing = false,
   canvasWidth,
   canvasHeight,
   onSelect,
+  onEditRequest,
   onLayoutChange,
 }: EditableTextBlockProps) {
   if (!interactive) {
@@ -229,12 +295,14 @@ export function EditableTextBlock({
       block={block}
       selected={selected}
       interactive={interactive}
+      editing={editing}
       canvasWidth={canvasWidth}
       canvasHeight={canvasHeight}
       onSelect={onSelect}
+      onEditRequest={onEditRequest}
       onLayoutChange={onLayoutChange}
     >
-      <FitText block={block} text={text} x={0} y={0} />
+      {editing ? null : <FitText block={block} text={text} x={0} y={0} />}
     </EditableTextFrame>
   );
 }

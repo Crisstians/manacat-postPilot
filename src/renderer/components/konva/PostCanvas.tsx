@@ -5,7 +5,18 @@ import { Image, Layer, Rect, Stage } from "react-konva";
 import {
   resolveProductImageRect,
 } from "../../../services/layout";
+import {
+  createEstimateTextMeasurer,
+  layoutDiscountPriceBlock,
+  layoutPriceRow,
+  resolveTextBlockHeight,
+} from "../../../services/layoutEngine";
+import {
+  applyDiscountLayoutOverrides,
+  loadCommittedDiscountLayoutOverrides,
+} from "../../../shared/discountLayoutOverrides";
 import { categoryShowsProductPlate, categoryUsesSize } from "../../../shared/categoryLayout";
+import { PRODUCT_FIELD_LIMITS } from "../../../shared/productFieldLimits";
 import { getDisplayProductImagePath } from "../../../shared/productImage";
 import { resolveProductImageSource } from "../../productImageSource";
 import { resolveTemplateImageSource } from "../../templateImageSource";
@@ -19,6 +30,12 @@ import type {
 import { defaultSubtitleForCategory } from "../../../shared/productSubtitle";
 import { isSquareMeterUnit, unitPriceSuffixText } from "../../../shared/unitDisplay";
 import { BottomRows } from "./BottomRows";
+import {
+  CanvasInlineTextEditor,
+  type CanvasInlineTextEditorHandle,
+  type InlineEditableField,
+  type InlineTextEditSession,
+} from "./CanvasInlineTextEditor";
 import { EditableTextBlock } from "./EditableTextBlock";
 import { PriceRow } from "./PriceRow";
 import { ProductImageLayer } from "./ProductImageLayer";
@@ -37,12 +54,17 @@ interface PostCanvasProps {
   previewScale?: number;
   onProductImageLayoutChange?: (layout: LayerRect) => void;
   onTextBlockLayoutChange?: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
+  onTextContentChange?: (field: InlineEditableField, value: string) => void;
+  onViewportPanStart?: (clientX: number, clientY: number) => void;
 }
 
 type CanvasSelection =
   | { type: "product" }
   | { type: "text"; id: TemplateTextBlockId }
+  | { type: "price" }
   | null;
+
+type ContentTextField = "productName" | "subtitle" | "description";
 
 const getPreviewPixelRatio = (): number => {
   if (typeof window === "undefined") {
@@ -83,7 +105,11 @@ const resolveBackgroundSrc = (path: string): string => resolveTemplateImageSourc
 
 const isInteractiveCanvasTarget = (target: Konva.Node): boolean => {
   const name = target.name() ?? "";
-  if (name === "product-image" || name.startsWith("text-block-") || name.startsWith("text-hit-")) {
+  if (
+    name === "product-image" ||
+    name.startsWith("text-block-") ||
+    name.startsWith("text-hit-")
+  ) {
     return true;
   }
 
@@ -102,6 +128,18 @@ const isInteractiveCanvasTarget = (target: Konva.Node): boolean => {
   return false;
 };
 
+const readPointerClient = (
+  event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+): { clientX: number; clientY: number } | null => {
+  const native = event.evt;
+  if ("touches" in native) {
+    const touch = native.touches[0] ?? native.changedTouches[0];
+    return touch ? { clientX: touch.clientX, clientY: touch.clientY } : null;
+  }
+  if (native.button !== 0) return null;
+  return { clientX: native.clientX, clientY: native.clientY };
+};
+
 export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function PostCanvas(
   {
     product,
@@ -110,12 +148,16 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     previewScale = 1,
     onProductImageLayoutChange,
     onTextBlockLayoutChange,
+    onTextContentChange,
+    onViewportPanStart,
   },
   ref,
 ) {
   const textLayerRef = useRef<Konva.Layer>(null);
   const stageRef = useRef<Konva.Stage>(null);
+  const inlineEditorRef = useRef<CanvasInlineTextEditorHandle>(null);
   const [selection, setSelection] = useState<CanvasSelection>(null);
+  const [editing, setEditing] = useState<InlineTextEditSession | null>(null);
   const backgroundSrc = template.backgroundImagePath
     ? resolveBackgroundSrc(template.backgroundImagePath)
     : undefined;
@@ -125,7 +167,8 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   const backgroundImage = useKonvaImageFromSrc(backgroundSrc);
   const productImage = useKonvaImage(productSrc);
   const interactiveProductImage = Boolean(productImage && onProductImageLayoutChange);
-  const interactiveText = Boolean(onTextBlockLayoutChange);
+  const contentEditable = Boolean(onTextContentChange);
+  const interactiveText = Boolean(onTextBlockLayoutChange) || contentEditable;
 
   const productRect = useMemo(() => {
     if (!productImage) {
@@ -142,6 +185,7 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
 
   useEffect(() => {
     setSelection(null);
+    setEditing(null);
   }, [product.productImagePath]);
 
   const subtitleText =
@@ -169,7 +213,13 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
     stage.batchDraw();
   }, [previewScale]);
 
-  const clearSelection = () => setSelection(null);
+  const clearSelection = () => {
+    if (editing) {
+      inlineEditorRef.current?.commit();
+    }
+    setSelection(null);
+    setEditing(null);
+  };
 
   useImperativeHandle(ref, () => ({
     async exportTextOverlay() {
@@ -224,133 +274,276 @@ export const PostCanvas = forwardRef<PostCanvasHandle, PostCanvasProps>(function
   }));
 
   const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (!interactiveProductImage && !interactiveText) return;
     if (isInteractiveCanvasTarget(event.target)) return;
-    clearSelection();
+    if (interactiveProductImage || interactiveText || contentEditable) {
+      clearSelection();
+    }
+    const point = readPointerClient(event);
+    if (point) {
+      onViewportPanStart?.(point.clientX, point.clientY);
+    }
   };
 
   const selectText = (id: TemplateTextBlockId) => setSelection({ type: "text", id });
   const isTextSelected = (id: TemplateTextBlockId) =>
     selection?.type === "text" && selection.id === id;
+  const isEditingField = (field: InlineEditableField) => editing?.field === field;
 
   const onTextGeometry = (blockId: TemplateTextBlockId) => (geometry: TextBlockGeometry) => {
     onTextBlockLayoutChange?.(blockId, geometry);
   };
 
+  const startContentEdit = (field: ContentTextField) => {
+    if (!onTextContentChange) return;
+    const block = template.textBlocks[field];
+    const value =
+      field === "productName"
+        ? product.productName
+        : field === "subtitle"
+          ? product.subtitle.trim() || defaultSubtitleForCategory(product.category)
+          : product.description;
+
+    setSelection({ type: "text", id: field });
+    setEditing({
+      field,
+      x: block.x,
+      y: block.y,
+      width: block.maxWidth,
+      height: resolveTextBlockHeight(block),
+      value,
+      fontSize: block.fontSize,
+      fontWeight: block.weight ?? 700,
+      fill: block.fill,
+      multiline: field === "subtitle" || field === "description",
+      maxLength: PRODUCT_FIELD_LIMITS[field],
+    });
+  };
+
+  const startPriceEdit = () => {
+    if (!onTextContentChange) return;
+    const priceBlock = template.textBlocks.price;
+    const unitBlock = template.textBlocks.unit;
+    const measure = createEstimateTextMeasurer();
+    let x = priceBlock.x;
+    let y = priceBlock.y;
+    let width = Math.max(priceBlock.maxWidth * 0.45, 200);
+    let fontSize = priceBlock.fontSize;
+
+    if (product.hasDiscount && originalPriceText) {
+      const discountLayout = applyDiscountLayoutOverrides(
+        layoutDiscountPriceBlock(
+          priceText,
+          originalPriceText,
+          unitLabel,
+          showM2Icon,
+          priceBlock,
+          unitBlock,
+          measure,
+        ),
+        loadCommittedDiscountLayoutOverrides(),
+      );
+      x = discountLayout.sale.price.x;
+      y = discountLayout.sale.price.y;
+      width = Math.max(discountLayout.sale.price.width, 200);
+      fontSize = discountLayout.sale.price.fontSize;
+    } else {
+      const saleLayout = layoutPriceRow(
+        priceText,
+        unitLabel,
+        showM2Icon,
+        priceBlock,
+        unitBlock,
+        measure,
+      );
+      x = saleLayout.price.x;
+      y = saleLayout.price.y;
+      width = Math.max(saleLayout.price.width, 200);
+      fontSize = saleLayout.price.fontSize;
+    }
+
+    setSelection({ type: "price" });
+    setEditing({
+      field: "price",
+      x,
+      y,
+      width,
+      height: resolveTextBlockHeight(priceBlock),
+      value: product.price > 0 ? product.price.toFixed(2) : "",
+      fontSize,
+      fontWeight: priceBlock.weight ?? 800,
+      fill: priceBlock.fill,
+      multiline: false,
+    });
+  };
+
+  const commitInlineEdit = (value: string) => {
+    if (!editing || !onTextContentChange) {
+      setEditing(null);
+      return;
+    }
+    onTextContentChange(editing.field, value);
+    setEditing(null);
+  };
+
+  const stageWidth = template.width * previewScale;
+  const stageHeight = template.height * previewScale;
+
   return (
-    <Stage
-      ref={stageRef}
-      width={template.width * previewScale}
-      height={template.height * previewScale}
-      scaleX={previewScale}
-      scaleY={previewScale}
-      onMouseDown={handleStagePointerDown}
-      onTouchStart={handleStagePointerDown}
-    >
-      <Layer>
-        {backgroundImage ? (
-          <Image
-            name="background"
-            image={backgroundImage}
-            x={0}
-            y={0}
-            width={template.width}
-            height={template.height}
-            imageSmoothingEnabled
-          />
-        ) : null}
-
-        {showProductPlaceholder && showProductPlate ? (
-          <Rect
-            name="product-placeholder"
-            x={template.productLayer.x}
-            y={template.productLayer.y}
-            width={template.productLayer.width}
-            height={template.productLayer.height}
-            stroke="#fb923c"
-            strokeWidth={2}
-            dash={[8, 6]}
-            fill="rgba(255,237,213,0.35)"
-          />
-        ) : null}
-
-        {productImage && !interactiveProductImage ? (
-          <Image
-            image={productImage}
-            x={productRect.x}
-            y={productRect.y}
-            width={productRect.width}
-            height={productRect.height}
-            imageSmoothingEnabled
-          />
-        ) : null}
-      </Layer>
-
-      {productImage && interactiveProductImage ? (
+    <div className="relative" style={{ width: stageWidth, height: stageHeight }}>
+      <Stage
+        ref={stageRef}
+        width={stageWidth}
+        height={stageHeight}
+        scaleX={previewScale}
+        scaleY={previewScale}
+        onMouseDown={handleStagePointerDown}
+        onTouchStart={handleStagePointerDown}
+      >
         <Layer>
-          <ProductImageLayer
-            image={productImage}
-            rect={productRect}
-            selected={selection?.type === "product"}
-            shadowEnabled={shadowEnabled}
+          {backgroundImage ? (
+            <Image
+              name="background"
+              image={backgroundImage}
+              x={0}
+              y={0}
+              width={template.width}
+              height={template.height}
+              imageSmoothingEnabled
+            />
+          ) : null}
+
+          {showProductPlaceholder && showProductPlate ? (
+            <Rect
+              name="product-placeholder"
+              x={template.productLayer.x}
+              y={template.productLayer.y}
+              width={template.productLayer.width}
+              height={template.productLayer.height}
+              stroke="#fb923c"
+              strokeWidth={2}
+              dash={[8, 6]}
+              fill="rgba(255,237,213,0.35)"
+            />
+          ) : null}
+
+          {productImage && !interactiveProductImage ? (
+            <Image
+              image={productImage}
+              x={productRect.x}
+              y={productRect.y}
+              width={productRect.width}
+              height={productRect.height}
+              imageSmoothingEnabled
+            />
+          ) : null}
+        </Layer>
+
+        {productImage && interactiveProductImage ? (
+          <Layer>
+            <ProductImageLayer
+              image={productImage}
+              rect={productRect}
+              selected={selection?.type === "product"}
+              shadowEnabled={shadowEnabled}
+              canvasWidth={template.width}
+              canvasHeight={template.height}
+              onSelect={() => {
+                setEditing(null);
+                setSelection({ type: "product" });
+              }}
+              onLayoutChange={onProductImageLayoutChange!}
+            />
+          </Layer>
+        ) : null}
+
+        <Layer ref={textLayerRef}>
+          <EditableTextBlock
+            block={template.textBlocks.productName}
+            text={product.productName || "Nume produs"}
+            selected={isTextSelected("productName")}
+            interactive={interactiveText}
+            editing={isEditingField("productName")}
             canvasWidth={template.width}
             canvasHeight={template.height}
-            onSelect={() => setSelection({ type: "product" })}
-            onLayoutChange={onProductImageLayoutChange!}
+            onSelect={() => {
+              setEditing(null);
+              selectText("productName");
+            }}
+            onEditRequest={contentEditable ? () => startContentEdit("productName") : undefined}
+            onLayoutChange={onTextGeometry("productName")}
+          />
+          <EditableTextBlock
+            block={template.textBlocks.subtitle}
+            text={subtitleText}
+            selected={isTextSelected("subtitle")}
+            interactive={interactiveText}
+            editing={isEditingField("subtitle")}
+            canvasWidth={template.width}
+            canvasHeight={template.height}
+            onSelect={() => {
+              setEditing(null);
+              selectText("subtitle");
+            }}
+            onEditRequest={contentEditable ? () => startContentEdit("subtitle") : undefined}
+            onLayoutChange={onTextGeometry("subtitle")}
+          />
+          <EditableTextBlock
+            block={template.textBlocks.description}
+            text={product.description || "Descriere produs"}
+            selected={isTextSelected("description")}
+            interactive={interactiveText}
+            editing={isEditingField("description")}
+            canvasWidth={template.width}
+            canvasHeight={template.height}
+            onSelect={() => {
+              setEditing(null);
+              selectText("description");
+            }}
+            onEditRequest={contentEditable ? () => startContentEdit("description") : undefined}
+            onLayoutChange={onTextGeometry("description")}
+          />
+          <PriceRow
+            priceText={priceText}
+            originalPriceText={originalPriceText}
+            hasDiscount={Boolean(product.hasDiscount)}
+            hasNewProduct={Boolean(product.hasNewProduct)}
+            unitLabel={unitLabel}
+            showM2Icon={showM2Icon}
+            priceBlock={template.textBlocks.price}
+            unitBlock={template.textBlocks.unit}
+            interactive={contentEditable}
+            selected={selection?.type === "price"}
+            editing={isEditingField("price")}
+            onSelect={
+              contentEditable
+                ? () => {
+                    setEditing(null);
+                    setSelection({ type: "price" });
+                  }
+                : undefined
+            }
+            onEditRequest={contentEditable ? startPriceEdit : undefined}
+          />
+          <BottomRows
+            sizeWidth={showSize ? product.sizeWidth : ""}
+            sizeHeight={showSize ? product.sizeHeight : ""}
+            featureText={featureText}
+            sizeBlock={template.textBlocks.size}
+            featureBlock={template.textBlocks.feature}
+            anchorFeatureAtSize={!showSize}
           />
         </Layer>
-      ) : null}
+      </Stage>
 
-      <Layer ref={textLayerRef}>
-        <EditableTextBlock
-          block={template.textBlocks.productName}
-          text={product.productName || "Nume produs"}
-          selected={isTextSelected("productName")}
-          interactive={interactiveText}
-          canvasWidth={template.width}
-          canvasHeight={template.height}
-          onSelect={() => selectText("productName")}
-          onLayoutChange={onTextGeometry("productName")}
+      {editing ? (
+        <CanvasInlineTextEditor
+          ref={inlineEditorRef}
+          session={editing}
+          previewScale={previewScale}
+          onCommit={commitInlineEdit}
+          onCancel={() => setEditing(null)}
         />
-        <EditableTextBlock
-          block={template.textBlocks.subtitle}
-          text={subtitleText}
-          selected={isTextSelected("subtitle")}
-          interactive={interactiveText}
-          canvasWidth={template.width}
-          canvasHeight={template.height}
-          onSelect={() => selectText("subtitle")}
-          onLayoutChange={onTextGeometry("subtitle")}
-        />
-        <EditableTextBlock
-          block={template.textBlocks.description}
-          text={product.description || "Descriere produs"}
-          selected={isTextSelected("description")}
-          interactive={interactiveText}
-          canvasWidth={template.width}
-          canvasHeight={template.height}
-          onSelect={() => selectText("description")}
-          onLayoutChange={onTextGeometry("description")}
-        />
-        <PriceRow
-          priceText={priceText}
-          originalPriceText={originalPriceText}
-          hasDiscount={Boolean(product.hasDiscount)}
-          hasNewProduct={Boolean(product.hasNewProduct)}
-          unitLabel={unitLabel}
-          showM2Icon={showM2Icon}
-          priceBlock={template.textBlocks.price}
-          unitBlock={template.textBlocks.unit}
-        />
-        <BottomRows
-          sizeWidth={showSize ? product.sizeWidth : ""}
-          sizeHeight={showSize ? product.sizeHeight : ""}
-          featureText={featureText}
-          sizeBlock={template.textBlocks.size}
-          featureBlock={template.textBlocks.feature}
-          anchorFeatureAtSize={!showSize}
-        />
-      </Layer>
-    </Stage>
+      ) : null}
+    </div>
   );
 });

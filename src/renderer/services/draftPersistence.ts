@@ -43,6 +43,25 @@ const prepareDraftForStorage = async (draft: PostDraft): Promise<PostDraft> => (
   product: await prepareProductForStorage(draft.product),
 });
 
+export const prepareWorkSessionForPersistence = async (
+  snapshot: Omit<WorkSessionSnapshot, "version" | "savedAt">,
+  defaultBackground: string,
+): Promise<WorkSessionSnapshot> => {
+  const drafts = await Promise.all(snapshot.drafts.map(prepareDraftForStorage));
+  return normalizeWorkSession(
+    {
+      version: DRAFT_STORAGE_VERSION,
+      savedAt: new Date().toISOString(),
+      activeIndex: snapshot.activeIndex,
+      activePanel: snapshot.activePanel,
+      bulkCaption: snapshot.bulkCaption,
+      bulkCaptionTouched: snapshot.bulkCaptionTouched,
+      drafts,
+    },
+    defaultBackground,
+  );
+};
+
 export const loadWorkSession = (
   userId: string,
   defaultBackground: string,
@@ -68,19 +87,7 @@ export const saveWorkSession = async (
   snapshot: Omit<WorkSessionSnapshot, "version" | "savedAt">,
   defaultBackground: string,
 ): Promise<void> => {
-  const drafts = await Promise.all(snapshot.drafts.map(prepareDraftForStorage));
-  const payload: WorkSessionSnapshot = normalizeWorkSession(
-    {
-      version: DRAFT_STORAGE_VERSION,
-      savedAt: new Date().toISOString(),
-      activeIndex: snapshot.activeIndex,
-      activePanel: snapshot.activePanel,
-      bulkCaption: snapshot.bulkCaption,
-      bulkCaptionTouched: snapshot.bulkCaptionTouched,
-      drafts,
-    },
-    defaultBackground,
-  );
+  const payload = await prepareWorkSessionForPersistence(snapshot, defaultBackground);
 
   try {
     localStorage.setItem(draftStorageKey(userId), JSON.stringify(payload));

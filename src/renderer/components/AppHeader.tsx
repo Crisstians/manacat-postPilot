@@ -1,5 +1,5 @@
 import logo from "../../assets/logo.png";
-import { LogOut } from "lucide-react";
+import { FilePlus, FolderOpen, LogOut, Save } from "lucide-react";
 import { useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 
@@ -8,9 +8,22 @@ interface AppHeaderProps {
   subtitle?: string;
   logoutBusy?: boolean;
   onLogout: () => void | Promise<void>;
+  documentActions?: {
+    onNew: () => void;
+    onOpen: () => void;
+    onSave: () => void;
+    onSaveAs: () => void;
+    busy?: boolean;
+  };
 }
 
-export function AppHeader({ onBack, subtitle, logoutBusy = false, onLogout }: AppHeaderProps) {
+export function AppHeader({
+  onBack,
+  subtitle,
+  logoutBusy = false,
+  onLogout,
+  documentActions,
+}: AppHeaderProps) {
   const { user } = useAuth();
   const userInitials = useMemo(() => {
     const parts = user?.name?.trim().split(/\s+/).filter(Boolean) ?? [];
@@ -39,7 +52,51 @@ export function AppHeader({ onBack, subtitle, logoutBusy = false, onLogout }: Ap
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {documentActions ? (
+            <div className="flex items-center gap-0.5 rounded-xl border border-white/15 bg-white/5 p-1 sm:gap-1">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm gap-1.5 px-2 text-white/90 hover:bg-white/15 sm:px-3"
+                onClick={documentActions.onNew}
+                disabled={documentActions.busy}
+                title="Document nou (Ctrl+N)"
+              >
+                <FilePlus size={14} />
+                <span className="hidden lg:inline">Nou</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm gap-1.5 px-2 text-white/90 hover:bg-white/15 sm:px-3"
+                onClick={documentActions.onOpen}
+                disabled={documentActions.busy}
+                title="Deschide (Ctrl+O)"
+              >
+                <FolderOpen size={14} />
+                <span className="hidden lg:inline">Deschide</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm gap-1.5 px-2 text-white/90 hover:bg-white/15 sm:px-3"
+                onClick={documentActions.onSave}
+                disabled={documentActions.busy}
+                title="Salvează (Ctrl+S)"
+              >
+                <Save size={14} />
+                <span className="hidden lg:inline">Salvează</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm gap-1.5 px-2 text-white/90 hover:bg-white/15 sm:px-3"
+                onClick={documentActions.onSaveAs}
+                disabled={documentActions.busy}
+                title="Salvează ca… (Ctrl+Shift+S)"
+              >
+                <Save size={14} />
+                <span className="hidden lg:inline">Salvează ca…</span>
+              </button>
+            </div>
+          ) : null}
           {user ? (
             <div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 sm:flex">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-content">

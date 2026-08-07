@@ -8,6 +8,7 @@ import type {
   TextBlockGeometry,
 } from "../../shared/types";
 import { usePreviewZoom } from "../hooks/usePreviewZoom";
+import type { InlineEditableField } from "./konva/CanvasInlineTextEditor";
 import { PostCanvas, type PostCanvasHandle } from "./konva/PostCanvas";
 
 interface CanvasPreviewProps {
@@ -15,16 +16,24 @@ interface CanvasPreviewProps {
   template: TemplateLayout;
   onProductImageLayoutChange?: (layout: LayerRect) => void;
   onTextBlockLayoutChange?: (blockId: TemplateTextBlockId, geometry: TextBlockGeometry) => void;
+  onTextContentChange?: (field: InlineEditableField, value: string) => void;
   onNavigateField?: (fieldKey: string) => void;
 }
 
 export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(function CanvasPreview(
-  { product, template, onProductImageLayoutChange, onTextBlockLayoutChange, onNavigateField },
+  {
+    product,
+    template,
+    onProductImageLayoutChange,
+    onTextBlockLayoutChange,
+    onTextContentChange,
+    onNavigateField,
+  },
   ref,
 ) {
   const hasProductImage = Boolean(product.productImagePath);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const { scale, pan, zoomPercent, isZoomed, resetZoom } = usePreviewZoom(
+  const { scale, pan, zoomPercent, isZoomed, isPanning, startPan, resetZoom } = usePreviewZoom(
     previewRef,
     template.width,
     template.height,
@@ -107,9 +116,10 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
 
       <div
         ref={previewRef}
-        className="preview-stage preview-stage-scroll app-scroll relative min-h-[280px] w-full min-w-0 flex-1 overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0"
-        onDoubleClick={resetZoom}
-        title="Scroll pentru zoom pe cursor · dublu-click pentru reset"
+        className={`preview-stage preview-stage-scroll app-scroll relative min-h-[280px] w-full min-w-0 flex-1 overflow-hidden rounded-xl border border-base-300/60 p-2 md:min-h-[340px] md:p-3 xl:min-h-0 ${
+          isPanning ? "cursor-grabbing select-none" : "cursor-grab"
+        }`}
+        title="Scroll pentru zoom · ține click pentru a muta preview-ul"
       >
         {scale !== null ? (
           <div
@@ -128,6 +138,8 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
               previewScale={scale}
               onProductImageLayoutChange={onProductImageLayoutChange}
               onTextBlockLayoutChange={onTextBlockLayoutChange}
+              onTextContentChange={onTextContentChange}
+              onViewportPanStart={startPan}
             />
           </div>
         ) : null}
@@ -135,8 +147,8 @@ export const CanvasPreview = forwardRef<PostCanvasHandle, CanvasPreviewProps>(fu
 
       <p className="helper-text mt-2 shrink-0 text-center text-[11px]">
         {hasProductImage
-          ? "Scroll pe preview pentru zoom. Apasă pe text sau pe poza produsului pentru a muta sau redimensiona."
-          : "Scroll pe preview pentru zoom. Apasă pe text pentru a muta sau redimensiona box-ul."}
+          ? "Scroll pentru zoom · ține click pe fundal ca să muți preview-ul. Click pe text ca să-l selectezi, trage ca să-l muți, dublu-click ca să editezi."
+          : "Scroll pentru zoom · ține click pe fundal ca să muți preview-ul. Click pe text ca să-l selectezi, trage ca să-l muți, dublu-click ca să editezi."}
       </p>
     </div>
   );

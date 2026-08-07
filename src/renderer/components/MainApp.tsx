@@ -5,7 +5,7 @@ import { publishBulkPost, publishPost } from "../../services/postsApi";
 import type { CatalogProduct } from "../../services/productsApi";
 import { createPostDraft, duplicatePostDraft } from "../../shared/bulkPosts";
 import { mapCatalogProductToInput } from "../../shared/catalogProductMap";
-import { createEmptyWorkSession } from "../../shared/draftStorage";
+import { createEmptyWorkSession, type WorkSessionSnapshot } from "../../shared/draftStorage";
 import { defaultTemplate } from "../../shared/defaults";
 import {
   countProductRequiredMissing,
@@ -16,6 +16,8 @@ import {
   isExportReady,
 } from "../../shared/exportReadiness";
 import { openFacebookPostInBrowser } from "../../shared/facebookPostUrl";
+import { documentDisplayName, formatWindowTitle } from "../../shared/pmanDocument";
+import { clampText, PRODUCT_FIELD_LIMITS } from "../../shared/productFieldLimits";
 import { revokeBlobUrl } from "../../shared/productImage";
 import type {
   BulkExportMode,
@@ -38,10 +40,21 @@ import {
 } from "../services/browserBulkExport";
 import { savePngInBrowser } from "../services/browserExport";
 import {
+  parseInlinePrice,
+  type InlineEditableField,
+} from "./konva/CanvasInlineTextEditor";
+import {
   isDraftStorageQuotaError,
   loadWorkSession,
   saveWorkSession,
 } from "../services/draftPersistence";
+import {
+  buildPmanFileContent,
+  openPmanFromDisk,
+  parsePmanFileContent,
+  readPmanPath,
+  savePmanToDisk,
+} from "../services/pmanPersistence";
 import {
   buildAllDraftExportRequests,
   buildPostRenderRequest,
@@ -63,6 +76,9 @@ import {
   PublishConfirmModal,
 } from "./PublishConfirmModal";
 import { TemplateControls } from "./TemplateControls";
+import { UnsavedChangesModal } from "./UnsavedChangesModal";
+import { useEnsureApiTemplate } from "../hooks/useEnsureApiTemplate";
+import { looksLikeApiTemplateId } from "../../shared/apiTemplate";
 
 const bundledTemplateModules = import.meta.glob(
   "../../assets/templatesPostari/*.{png,jpg,jpeg,webp}",
@@ -90,9 +106,17 @@ const validate = (product: ProductInput, template: TemplateLayout): string[] => 
 
 interface MainAppProps {
   onBack: () => void;
+  initialPmanPath?: string | null;
+  onInitialPmanPathConsumed?: () => void;
 }
 
-export function MainApp({ onBack }: MainAppProps) {
+type PendingDocumentAction =
+  | { type: "new" }
+  | { type: "open" }
+  | { type: "back" }
+  | { type: "load-path"; path: string };
+
+export function MainApp({ onBack, initialPmanPath = null, onInitialPmanPathConsumed }: MainAppProps) {
   const { user, logout, accessToken } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const [{ session: initialSession, restored: sessionRestored }] = useState(() =>
@@ -122,6 +146,13 @@ export function MainApp({ onBack }: MainAppProps) {
   const skipAutoSaveRef = useRef(true);
   const restoreToastShownRef = useRef(false);
   const quotaErrorShownRef = useRef(false);
+  const [documentPath, setDocumentPath] = useState<string | null>(null);
+  const [documentDirty, setDocumentDirty] = useState(false);
+  const [documentBusy, setDocumentBusy] = useState(false);
+  const [unsavedOpen, setUnsavedOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingDocumentAction | null>(null);
+  const skipDirtyRef = useRef(true);
+  const initialPmanHandledRef = useRef(false);
 
   const activeDraft = drafts[activeIndex] ?? drafts[0]!;
   const product = activeDraft.product;
@@ -157,10 +188,10 @@ export function MainApp({ onBack }: MainAppProps) {
   }, [exportReady]);
 
   useEffect(() => {
-    if (!sessionRestored || restoreToastShownRef.current) return;
+    if (!sessionRestored || restoreToastShownRef.current || initialPmanPath) return;
     restoreToastShownRef.current = true;
     showSuccess("Draft restaurat automat.");
-  }, [sessionRestored, showSuccess]);
+  }, [sessionRestored, showSuccess, initialPmanPath]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -190,6 +221,253 @@ export function MainApp({ onBack }: MainAppProps) {
 
     return () => window.clearTimeout(timeout);
   }, [user?.id, drafts, activeIndex, activePanel, bulkCaption, bulkCaptionTouched, showError]);
+
+  useEffect(() => {
+    if (skipDirtyRef.current) return;
+    setDocumentDirty(true);
+  }, [drafts, activeIndex, activePanel, bulkCaption, bulkCaptionTouched]);
+
+  useEffect(() => {
+    // Allow mount effects to settle before marking edits as dirty.
+    const timeout = window.setTimeout(() => {
+      skipDirtyRef.current = false;
+    }, 400);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    const title = formatWindowTitle(documentPath, documentDirty);
+    void window.manacatApi?.setWindowTitle?.(title);
+    document.title = title;
+  }, [documentPath, documentDirty]);
+
+  const syncSessionToLocalStorage = useCallback(
+    async (session: WorkSessionSnapshot) => {
+      if (!user?.id) return;
+      try {
+        await saveWorkSession(
+          user.id,
+          {
+            drafts: session.drafts,
+            activeIndex: session.activeIndex,
+            activePanel: session.activePanel,
+            bulkCaption: session.bulkCaption,
+            bulkCaptionTouched: session.bulkCaptionTouched,
+          },
+          firstBundledTemplatePath,
+        );
+      } catch (error) {
+        if (isDraftStorageQuotaError(error) && !quotaErrorShownRef.current) {
+          quotaErrorShownRef.current = true;
+          showError("Draft-ul nu a putut fi salvat: spațiul local este plin.");
+        }
+      }
+    },
+    [user?.id, showError],
+  );
+
+  const applySession = useCallback(
+    (session: WorkSessionSnapshot, nextPath: string | null, options?: { announce?: string }) => {
+      skipDirtyRef.current = true;
+      skipAutoSaveRef.current = true;
+      setDrafts(session.drafts);
+      setActiveIndex(session.activeIndex);
+      setActivePanel(session.activePanel);
+      setBulkCaption(session.bulkCaption);
+      setBulkCaptionTouched(session.bulkCaptionTouched);
+      setDocumentPath(nextPath);
+      setDocumentDirty(false);
+      void syncSessionToLocalStorage(session);
+      if (options?.announce) {
+        showSuccess(options.announce);
+      }
+      window.setTimeout(() => {
+        skipDirtyRef.current = false;
+      }, 400);
+    },
+    [showSuccess, syncSessionToLocalStorage],
+  );
+
+  const getSnapshotPayload = useCallback(
+    () => ({
+      drafts,
+      activeIndex,
+      activePanel,
+      bulkCaption,
+      bulkCaptionTouched,
+    }),
+    [drafts, activeIndex, activePanel, bulkCaption, bulkCaptionTouched],
+  );
+
+  const performSave = useCallback(
+    async (forceDialog: boolean): Promise<boolean> => {
+      setDocumentBusy(true);
+      try {
+        const content = await buildPmanFileContent(getSnapshotPayload(), firstBundledTemplatePath);
+        const result = await savePmanToDisk(content, documentPath, forceDialog);
+        if (!result.success) {
+          if (!result.canceled && result.error) showError(result.error);
+          return false;
+        }
+        setDocumentPath(result.filePath);
+        setDocumentDirty(false);
+        showSuccess(forceDialog || !documentPath ? "Document salvat." : "Document actualizat.");
+        return true;
+      } catch (error) {
+        showError(error instanceof Error ? error.message : "Salvare eșuată.");
+        return false;
+      } finally {
+        setDocumentBusy(false);
+      }
+    },
+    [documentPath, getSnapshotPayload, showError, showSuccess],
+  );
+
+  const loadFromPmanContent = useCallback(
+    (content: string, filePath: string) => {
+      const parsed = parsePmanFileContent(content);
+      if (!parsed.ok) {
+        showError(parsed.error);
+        return false;
+      }
+      applySession(parsed.session, filePath, {
+        announce: `Deschis: ${documentDisplayName(filePath)}`,
+      });
+      return true;
+    },
+    [applySession, showError],
+  );
+
+  const performOpenDialog = useCallback(async () => {
+    setDocumentBusy(true);
+    try {
+      const result = await openPmanFromDisk();
+      if (!result.success) {
+        if (!result.canceled && result.error) showError(result.error);
+        return;
+      }
+      if (!result.content) {
+        showError("Fișierul .pman nu are conținut.");
+        return;
+      }
+      loadFromPmanContent(result.content, result.filePath);
+    } finally {
+      setDocumentBusy(false);
+    }
+  }, [loadFromPmanContent, showError]);
+
+  const performNew = useCallback(() => {
+    const empty = createEmptyWorkSession(firstBundledTemplatePath);
+    applySession(empty, null, { announce: "Document nou." });
+  }, [applySession]);
+
+  const performLoadPath = useCallback(
+    async (filePath: string) => {
+      setDocumentBusy(true);
+      try {
+        const result = await readPmanPath(filePath);
+        if (!result.success) {
+          showError(result.error ?? "Nu s-a putut deschide fișierul .pman.");
+          return;
+        }
+        if (!result.content) {
+          showError("Fișierul .pman nu are conținut.");
+          return;
+        }
+        loadFromPmanContent(result.content, result.filePath);
+      } finally {
+        setDocumentBusy(false);
+      }
+    },
+    [loadFromPmanContent, showError],
+  );
+
+  const runPendingAction = useCallback(
+    async (action: PendingDocumentAction) => {
+      switch (action.type) {
+        case "new":
+          performNew();
+          break;
+        case "open":
+          await performOpenDialog();
+          break;
+        case "back":
+          onBack();
+          break;
+        case "load-path":
+          await performLoadPath(action.path);
+          break;
+      }
+    },
+    [onBack, performLoadPath, performNew, performOpenDialog],
+  );
+
+  const requestDocumentAction = useCallback(
+    (action: PendingDocumentAction) => {
+      if (!documentDirty) {
+        void runPendingAction(action);
+        return;
+      }
+      setPendingAction(action);
+      setUnsavedOpen(true);
+    },
+    [documentDirty, runPendingAction],
+  );
+
+  const onDocumentNew = useCallback(() => {
+    requestDocumentAction({ type: "new" });
+  }, [requestDocumentAction]);
+
+  const onDocumentOpen = useCallback(() => {
+    requestDocumentAction({ type: "open" });
+  }, [requestDocumentAction]);
+
+  const onDocumentSave = useCallback(() => {
+    void performSave(false);
+  }, [performSave]);
+
+  const onDocumentSaveAs = useCallback(() => {
+    void performSave(true);
+  }, [performSave]);
+
+  const onHeaderBack = useCallback(() => {
+    requestDocumentAction({ type: "back" });
+  }, [requestDocumentAction]);
+
+  const onUnsavedSave = useCallback(async () => {
+    const saved = await performSave(false);
+    if (!saved || !pendingAction) return;
+    setUnsavedOpen(false);
+    const action = pendingAction;
+    setPendingAction(null);
+    await runPendingAction(action);
+  }, [pendingAction, performSave, runPendingAction]);
+
+  const onUnsavedDiscard = useCallback(async () => {
+    if (!pendingAction) return;
+    setUnsavedOpen(false);
+    const action = pendingAction;
+    setPendingAction(null);
+    setDocumentDirty(false);
+    await runPendingAction(action);
+  }, [pendingAction, runPendingAction]);
+
+  const onUnsavedCancel = useCallback(() => {
+    setUnsavedOpen(false);
+    setPendingAction(null);
+  }, []);
+
+  useEffect(() => {
+    if (!initialPmanPath) return;
+    initialPmanHandledRef.current = false;
+  }, [initialPmanPath]);
+
+  useEffect(() => {
+    if (!initialPmanPath || initialPmanHandledRef.current) return;
+    initialPmanHandledRef.current = true;
+    onInitialPmanPathConsumed?.();
+    requestDocumentAction({ type: "load-path", path: initialPmanPath });
+  }, [initialPmanPath, onInitialPmanPathConsumed, requestDocumentAction]);
 
   useEffect(() => {
     setDrafts((current) =>
@@ -298,6 +576,26 @@ export function MainApp({ onBack }: MainAppProps) {
       );
     },
     [activeIndex],
+  );
+
+  const applyApiTemplateFallback = useCallback((layout: TemplateLayout) => {
+    setDrafts((current) =>
+      current.map((draft) => {
+        if (
+          /^https?:\/\//i.test(draft.template.backgroundImagePath.trim()) ||
+          looksLikeApiTemplateId(draft.template.id)
+        ) {
+          return draft;
+        }
+        return { ...draft, template: layout };
+      }),
+    );
+  }, []);
+
+  useEnsureApiTemplate(
+    drafts[0]?.template ?? defaultTemplate,
+    applyApiTemplateFallback,
+    "product",
   );
 
   const resetProductImageState = (previous: ProductInput, productImagePath: string): ProductInput => {
@@ -421,6 +719,20 @@ export function MainApp({ onBack }: MainAppProps) {
         [blockId]: applyTextBlockGeometry(previous.textBlocks[blockId], geometry),
       },
     }));
+  };
+
+  const onTextContentChange = (field: InlineEditableField, value: string) => {
+    setProduct((previous) => {
+      if (field === "price") {
+        return {
+          ...previous,
+          price: parseInlinePrice(value, PRODUCT_FIELD_LIMITS.priceMax),
+        };
+      }
+
+      const nextValue = clampText(value, PRODUCT_FIELD_LIMITS[field]);
+      return { ...previous, [field]: nextValue };
+    });
   };
 
   const onDuplicateDraft = () => {
@@ -953,21 +1265,57 @@ export function MainApp({ onBack }: MainAppProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
+      const key = event.key.toLowerCase();
+      const mod = event.ctrlKey || event.metaKey;
+
+      if (mod && key === "e") {
         event.preventDefault();
         if (!actionBusy && canTriggerExport) {
           void onExport();
         }
+        return;
+      }
+
+      if (!mod || documentBusy) return;
+
+      if (key === "n") {
+        event.preventDefault();
+        onDocumentNew();
+      } else if (key === "o") {
+        event.preventDefault();
+        onDocumentOpen();
+      } else if (key === "s" && event.shiftKey) {
+        event.preventDefault();
+        onDocumentSaveAs();
+      } else if (key === "s") {
+        event.preventDefault();
+        onDocumentSave();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actionBusy, canTriggerExport, onExport]);
+  }, [
+    actionBusy,
+    canTriggerExport,
+    documentBusy,
+    onDocumentNew,
+    onDocumentOpen,
+    onDocumentSave,
+    onDocumentSaveAs,
+    onExport,
+  ]);
 
   return (
     <main className="editor-shell flex flex-col bg-base-200 text-base-content">
       <ActionLoadingOverlay state={actionLoading} />
+      <UnsavedChangesModal
+        open={unsavedOpen}
+        busy={documentBusy}
+        onSave={() => void onUnsavedSave()}
+        onDiscard={() => void onUnsavedDiscard()}
+        onCancel={onUnsavedCancel}
+      />
       <ExportBulkMethodModal
         open={exportBulkMethodOpen}
         postCount={drafts.length}
@@ -995,10 +1343,17 @@ export function MainApp({ onBack }: MainAppProps) {
       />
       <div className="editor-shell-body flex min-h-full flex-col">
         <AppHeader
-          onBack={onBack}
-          subtitle="Promovare produs"
+          onBack={onHeaderBack}
+          subtitle={`${documentDisplayName(documentPath)}${documentDirty ? " •" : ""} · Promovare produs`}
           onLogout={onLogout}
           logoutBusy={logoutBusy}
+          documentActions={{
+            onNew: onDocumentNew,
+            onOpen: onDocumentOpen,
+            onSave: onDocumentSave,
+            onSaveAs: onDocumentSaveAs,
+            busy: documentBusy,
+          }}
         />
 
         <div className="editor-shell-stack mx-auto grid w-full max-w-[1680px] flex-1 gap-4 p-4 xl:min-h-0 xl:grid-cols-12 xl:p-5">
@@ -1056,7 +1411,7 @@ export function MainApp({ onBack }: MainAppProps) {
                   />
                 </div>
                 <div className={activePanel === "template" ? "block" : "hidden"}>
-                  <TemplateControls template={template} onChange={setTemplate} />
+                  <TemplateControls template={template} onChange={setTemplate} kind="product" />
                 </div>
 
                 {isBulkMode ? (
@@ -1121,6 +1476,7 @@ export function MainApp({ onBack }: MainAppProps) {
                     template={template}
                     onProductImageLayoutChange={onProductImageLayoutChange}
                     onTextBlockLayoutChange={onTextBlockLayoutChange}
+                    onTextContentChange={onTextContentChange}
                     onNavigateField={focusField}
                   />
                 </div>

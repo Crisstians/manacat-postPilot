@@ -31,15 +31,20 @@ const safeToFileUrl = (
 };
 
 export const resolveTemplateImageSource = (imagePath: string): string => {
-  const bundledUrl = bundledTemplateUrlById.get(getTemplateIdFromPath(imagePath));
+  const trimmed = imagePath.trim();
+  if (/^(https?:|blob:|data:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const bundledUrl = bundledTemplateUrlById.get(getTemplateIdFromPath(trimmed));
   if (bundledUrl) {
     return bundledUrl;
   }
 
-  const fileUrl = safeToFileUrl(imagePath, window.manacatApi?.toFileUrl);
+  const fileUrl = safeToFileUrl(trimmed, window.manacatApi?.toFileUrl);
   if (fileUrl) {
     return fileUrl;
   }
 
-  return resolveProductImageSource(imagePath, window.manacatApi?.toFileUrl);
+  return resolveProductImageSource(trimmed, window.manacatApi?.toFileUrl);
 };

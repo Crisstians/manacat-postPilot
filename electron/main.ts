@@ -19,8 +19,44 @@ const __dirname = path.dirname(__filename);
 
 const APP_NAME = "Manacat PostPilot";
 let mainWindow: Electron.BrowserWindow | null = null;
+let currentWindowTitle = APP_NAME;
+let pendingPmanPath: string | null = null;
+let mainWindowReady = false;
 
 app.setName(APP_NAME);
+
+const extractPmanPath = (argv: string[]): string | null => {
+  for (const arg of argv) {
+    if (!arg || arg.startsWith("-")) continue;
+    if (arg.toLowerCase().endsWith(".pman")) {
+      return path.resolve(arg);
+    }
+  }
+  return null;
+};
+
+const sendOpenPmanPath = (filePath: string): void => {
+  pendingPmanPath = filePath;
+  if (mainWindow && mainWindowReady && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("pman:open-path", filePath);
+  }
+};
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, commandLine) => {
+    const filePath = extractPmanPath(commandLine);
+    if (filePath) {
+      sendOpenPmanPath(filePath);
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -159,15 +195,23 @@ const createWindow = async (): Promise<void> => {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    mainWindowReady = false;
   });
 
   mainWindow.on("page-title-updated", (event) => {
     event.preventDefault();
-    mainWindow?.setTitle(APP_NAME);
+    mainWindow?.setTitle(currentWindowTitle);
   });
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindowReady = true;
+    if (pendingPmanPath) {
+      mainWindow?.webContents.send("pman:open-path", pendingPmanPath);
+    }
   });
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -226,6 +270,122 @@ ipcMain.handle("templates:list", async () => listTemplates());
 
 ipcMain.handle("dialog:pickProductImage", async () =>
   pickImage("Alege poza produsului"),
+);
+
+ipcMain.handle("window:setTitle", (_event, title: unknown) => {
+  if (typeof title !== "string" || !title.trim()) {
+    currentWindowTitle = APP_NAME;
+  } else {
+    currentWindowTitle = title.trim();
+  }
+  mainWindow?.setTitle(currentWindowTitle);
+  return { ok: true as const };
+});
+
+ipcMain.handle("pman:getPendingPath", () => {
+  const filePath = pendingPmanPath;
+  pendingPmanPath = null;
+  return filePath;
+});
+
+ipcMain.handle(
+  "pman:save",
+  async (
+    _event,
+    payload: { content?: string; filePath?: string | null },
+  ): Promise<
+    | { success: true; filePath: string }
+    | { success: false; canceled?: boolean; error?: string }
+  > => {
+    try {
+      const content = typeof payload?.content === "string" ? payload.content : "";
+      if (!content) {
+        return { success: false, error: "Conținutul documentului lipsește." };
+      }
+
+      let targetPath =
+        typeof payload?.filePath === "string" && payload.filePath.trim()
+          ? payload.filePath.trim()
+          : null;
+
+      if (!targetPath) {
+        const savePath = await dialog.showSaveDialog({
+          title: "Salvează documentul PostPilot",
+          defaultPath: "document.pman",
+          filters: [{ name: "Manacat PostPilot", extensions: ["pman"] }],
+        });
+        if (savePath.canceled || !savePath.filePath) {
+          return { success: false, canceled: true };
+        }
+        targetPath = savePath.filePath.toLowerCase().endsWith(".pman")
+          ? savePath.filePath
+          : `${savePath.filePath}.pman`;
+      }
+
+      await fs.writeFile(targetPath, content, "utf8");
+      return { success: true, filePath: targetPath };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Salvare .pman eșuată.",
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  "pman:open",
+  async (): Promise<
+    | { success: true; filePath: string; content: string }
+    | { success: false; canceled?: boolean; error?: string }
+  > => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: "Deschide document PostPilot",
+        properties: ["openFile"],
+        filters: [{ name: "Manacat PostPilot", extensions: ["pman"] }],
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { success: false, canceled: true };
+      }
+      const filePath = result.filePaths[0];
+      const content = await fs.readFile(filePath, "utf8");
+      return { success: true, filePath, content };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Deschidere .pman eșuată.",
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  "pman:readPath",
+  async (
+    _event,
+    filePath: unknown,
+  ): Promise<
+    | { success: true; filePath: string; content: string }
+    | { success: false; error?: string }
+  > => {
+    try {
+      if (typeof filePath !== "string" || !filePath.trim()) {
+        return { success: false, error: "Path invalid." };
+      }
+      const resolved = path.resolve(filePath.trim());
+      if (!resolved.toLowerCase().endsWith(".pman")) {
+        return { success: false, error: "Fișierul nu are extensia .pman." };
+      }
+      const content = await fs.readFile(resolved, "utf8");
+      return { success: true, filePath: resolved, content };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Nu s-a putut citi fișierul .pman.",
+      };
+    }
+  },
 );
 
 ipcMain.handle(
@@ -502,7 +662,52 @@ ipcMain.handle("image:prepareForFacebook", async (_, payload: { imageBase64: str
   }
 });
 
+ipcMain.handle(
+  "image:readAsDataUrl",
+  async (
+    _event,
+    filePath: unknown,
+  ): Promise<{ success: true; dataUrl: string } | { success: false; error: string }> => {
+    try {
+      if (typeof filePath !== "string" || !filePath.trim()) {
+        return { success: false, error: "Path invalid." };
+      }
+
+      const resolved = resolveLocalImagePath(filePath.trim());
+      const extension = path.extname(resolved).toLowerCase();
+      if (!IMAGE_EXTENSIONS.has(extension)) {
+        return { success: false, error: "Fișierul nu este o imagine suportată." };
+      }
+
+      const stat = await fs.stat(resolved);
+      if (!stat.isFile()) {
+        return { success: false, error: "Fișierul nu există." };
+      }
+
+      registerAllowedLocalImage(resolved);
+      const data = await fs.readFile(resolved);
+      const mimeType = LOCAL_IMAGE_MIME[extension] ?? "application/octet-stream";
+      return {
+        success: true,
+        dataUrl: `data:${mimeType};base64,${data.toString("base64")}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Nu s-a putut citi imaginea.",
+      };
+    }
+  },
+);
+
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return;
+
+  const launchPman = extractPmanPath(process.argv);
+  if (launchPman) {
+    pendingPmanPath = launchPman;
+  }
+
   registerLocalFileProtocol();
   enableCrossOriginIsolation();
   await createWindow();

@@ -1,4 +1,5 @@
-import { Group, Image, Text } from "react-konva";
+import Konva from "konva";
+import { Group, Image, Rect, Text } from "react-konva";
 import { useLayoutEffect, useMemo, useState } from "react";
 import m2UnitateIcon from "../../../assets/unitati/m2Unitate.png";
 import pretRedusBadge from "../../../assets/poze/pretRedus.png";
@@ -15,6 +16,7 @@ import {
   layoutHangingBadgeSize,
   layoutM2IconY,
   layoutPriceRow,
+  resolveTextBlockHeight,
   type DiscountPriceBlockLayout,
   type PriceRowLayout,
 } from "../../../services/layoutEngine";
@@ -27,6 +29,9 @@ import { GARET_FONT, TEXT_GLOW, konvaFontStyle } from "./textStyles";
 import { measureKonvaTextWidth, preloadGaretFonts } from "./measureKonvaText";
 import { useKonvaImage } from "./useKonvaImage";
 
+const HOVER_STROKE = "rgba(251, 146, 60, 0.85)";
+const SELECT_STROKE = "#fb923c";
+
 interface PriceRowProps {
   priceText: string;
   originalPriceText?: string;
@@ -36,6 +41,12 @@ interface PriceRowProps {
   showM2Icon: boolean;
   priceBlock: TextBlock;
   unitBlock: TextBlock;
+  /** Permite selectare + editare inline pe cifra de preț (nu pe lei/um). */
+  interactive?: boolean;
+  selected?: boolean;
+  editing?: boolean;
+  onSelect?: () => void;
+  onEditRequest?: () => void;
 }
 
 interface MeasuredRowLayout {
@@ -86,6 +97,86 @@ const measurePriceUnitRow = async (
   };
 };
 
+const stopDomBubble = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+  event.cancelBubble = true;
+  event.evt.stopPropagation();
+};
+
+function PriceHitTarget({
+  x,
+  y,
+  width,
+  height,
+  selected,
+  editing,
+  onSelect,
+  onEditRequest,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  selected: boolean;
+  editing: boolean;
+  onSelect: () => void;
+  onEditRequest: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const showHover = hovered && !selected && !editing;
+
+  return (
+    <Rect
+      name="text-hit-price"
+      x={x}
+      y={y}
+      width={Math.max(width, 40)}
+      height={Math.max(height, 40)}
+      fill={showHover ? "rgba(251, 146, 60, 0.06)" : "rgba(251, 146, 60, 0.001)"}
+      stroke={editing ? undefined : selected ? SELECT_STROKE : showHover ? HOVER_STROKE : undefined}
+      strokeWidth={selected || showHover ? 2 : 0}
+      perfectDrawEnabled={false}
+      shadowForStrokeEnabled={false}
+      listening={!editing}
+      onMouseEnter={(event) => {
+        setHovered(true);
+        const stage = event.target.getStage();
+        if (stage) stage.container().style.cursor = "pointer";
+      }}
+      onMouseLeave={(event) => {
+        setHovered(false);
+        const stage = event.target.getStage();
+        if (stage) stage.container().style.cursor = "default";
+      }}
+      onClick={(event) => {
+        stopDomBubble(event);
+        if (selected) {
+          onEditRequest();
+          return;
+        }
+        onSelect();
+      }}
+      onTap={(event) => {
+        stopDomBubble(event);
+        if (selected) {
+          onEditRequest();
+          return;
+        }
+        onSelect();
+      }}
+      onDblClick={(event) => {
+        stopDomBubble(event);
+        onSelect();
+        onEditRequest();
+      }}
+      onDblTap={(event) => {
+        stopDomBubble(event);
+        onSelect();
+        onEditRequest();
+      }}
+    />
+  );
+}
+
 function PriceTexts({
   layout,
   measured,
@@ -93,6 +184,7 @@ function PriceTexts({
   unitBlock,
   showM2Icon,
   iconImage,
+  hidePrice = false,
 }: {
   layout: PriceRowLayout;
   measured: MeasuredRowLayout | null;
@@ -100,6 +192,7 @@ function PriceTexts({
   unitBlock: TextBlock;
   showM2Icon: boolean;
   iconImage: HTMLImageElement | null | undefined;
+  hidePrice?: boolean;
 }) {
   const unitX = measured?.unitX ?? layout.unit.x;
   const iconX = measured?.iconX ?? layout.icon?.x ?? 0;
@@ -109,17 +202,19 @@ function PriceTexts({
 
   return (
     <Group>
-      <Text
-        x={layout.price.x}
-        y={layout.price.y}
-        text={layout.price.text}
-        fontSize={layout.price.fontSize}
-        fontFamily={GARET_FONT}
-        fontStyle={konvaFontStyle(priceBlock)}
-        fill={priceBlock.fill}
-        lineHeight={priceBlock.lineHeight}
-        {...TEXT_GLOW}
-      />
+      {hidePrice ? null : (
+        <Text
+          x={layout.price.x}
+          y={layout.price.y}
+          text={layout.price.text}
+          fontSize={layout.price.fontSize}
+          fontFamily={GARET_FONT}
+          fontStyle={konvaFontStyle(priceBlock)}
+          fill={priceBlock.fill}
+          lineHeight={priceBlock.lineHeight}
+          {...TEXT_GLOW}
+        />
+      )}
       <Text
         x={unitX}
         y={layout.unit.y}
@@ -158,6 +253,11 @@ export function PriceRow({
   showM2Icon,
   priceBlock,
   unitBlock,
+  interactive = false,
+  selected = false,
+  editing = false,
+  onSelect,
+  onEditRequest,
 }: PriceRowProps) {
   const measure = useMemo(
     () => createCanvasTextMeasurer() ?? createEstimateTextMeasurer(),
@@ -341,6 +441,32 @@ export function PriceRow({
     </>
   );
 
+  const salePriceLayout = discountLayout?.sale ?? saleLayout;
+  const salePriceWidth = Math.max(
+    salePriceLayout.price.width,
+    measuredDiscount?.sale
+      ? measuredDiscount.sale.unitX - salePriceLayout.price.x - PRICE_UNIT_GAP
+      : measuredSale
+        ? measuredSale.unitX - saleLayout.price.x - PRICE_UNIT_GAP
+        : salePriceLayout.price.width,
+    80,
+  );
+  const salePriceHeight = resolveTextBlockHeight(priceBlock);
+
+  const priceHit =
+    interactive && onSelect && onEditRequest ? (
+      <PriceHitTarget
+        x={salePriceLayout.price.x}
+        y={salePriceLayout.price.y}
+        width={salePriceWidth}
+        height={salePriceHeight}
+        selected={selected}
+        editing={editing}
+        onSelect={onSelect}
+        onEditRequest={onEditRequest}
+      />
+    ) : null;
+
   if (discountLayout) {
     const strikeWidth = measuredDiscount?.strikeWidth ?? discountLayout.strike.width;
 
@@ -372,7 +498,9 @@ export function PriceRow({
           unitBlock={unitBlock}
           showM2Icon={showM2Icon}
           iconImage={iconImage}
+          hidePrice={editing}
         />
+        {priceHit}
       </Group>
     );
   }
@@ -387,7 +515,9 @@ export function PriceRow({
         unitBlock={unitBlock}
         showM2Icon={showM2Icon}
         iconImage={iconImage}
+        hidePrice={editing}
       />
+      {priceHit}
     </Group>
   );
 }
